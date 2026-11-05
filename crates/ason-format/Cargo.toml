@@ -1,0 +1,7 @@
+[package]
+name = "ason-format"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+ason = { path = "../../../ason", version = "3.4" }

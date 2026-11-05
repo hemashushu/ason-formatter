@@ -1,0 +1,12 @@
+[package]
+name = "ason-format-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "asonfmt"
+path = "src/main.rs"
+
+[dependencies]
+ason-format = { path = "../ason-format" }
+clap = { version = "4.5", features = ["derive"] }
