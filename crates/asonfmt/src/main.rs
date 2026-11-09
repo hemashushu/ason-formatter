@@ -270,7 +270,6 @@ fn run(args: Args) -> io::Result<()> {
             indent_width: args.indent_width,
             indent_style: args.indent_style.into(),
             line_ending: args.line_ending.into(),
-            ..FormatOptions::default()
         },
     )
     .map_err(|error| invalid(error, &input_label))?;
