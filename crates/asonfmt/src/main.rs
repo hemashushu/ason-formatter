@@ -5,28 +5,48 @@
 //! output. Input and output aliases are rejected rather than formatted in place.
 
 use std::{
-    fs::{File, Metadata, OpenOptions},
+    fs::{self, File, Metadata, OpenOptions},
     io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
 use ason_format::{FormatOptions, format_with_options, highlight_ansi};
-use clap::{Parser, ValueEnum};
+use clap::{CommandFactory, Parser, ValueEnum};
 
 /// Command-line settings parsed by clap, which also supplies help and usage errors.
 #[derive(Parser)]
 #[command(
     name = "asonfmt",
     version,
-    about = "Format ASON while preserving literals and comments"
+    about = "Source-preserving formatting and syntax highlighting for ASON documents"
 )]
 struct Args {
     /// Input file; omit or use - to read standard input
     // Keep this help text short. `None` and the literal path `-` both select stdin.
     input: Option<PathBuf>,
+    /// Overwrite the input file with formatted output (not atomic)
+    #[arg(
+        short,
+        long,
+        requires = "input",
+        conflicts_with_all = ["replace_atomic", "output", "complete"]
+    )]
+    replace: bool,
+    /// Atomically replace the input file with formatted output
+    #[arg(
+        long,
+        requires = "input",
+        conflicts_with_all = ["replace", "output", "complete"]
+    )]
+    replace_atomic: bool,
     /// Output file; omit or use - to write standard output
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(
+        short,
+        long,
+        value_name = "OUTPUT",
+        conflicts_with_all = ["replace", "replace_atomic", "complete"]
+    )]
     output: Option<PathBuf>,
     /// Spaces per indentation level
     // Zero retains structural newlines without adding indentation spaces.
@@ -35,6 +55,14 @@ struct Args {
     /// Color standard output (output files are always plain text)
     #[arg(long, value_enum, default_value_t = Color::Auto)]
     color: Color,
+    /// Print a completion script to standard output
+    #[arg(
+        long,
+        value_enum,
+        value_name = "SHELL",
+        conflicts_with_all = ["input", "output", "replace", "replace_atomic"]
+    )]
+    complete: Option<CompletionShell>,
 }
 
 /// Requested color policy for stdout; this never affects an output file.
@@ -46,6 +74,27 @@ enum Color {
     Always,
     /// Emit plain text regardless of terminal capabilities or environment settings.
     Never,
+}
+
+/// Shells supported by the completion-script generator.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
+    #[value(name = "PowerShell", alias = "powershell")]
+    PowerShell,
+}
+
+impl From<CompletionShell> for clap_complete::Shell {
+    fn from(shell: CompletionShell) -> Self {
+        match shell {
+            CompletionShell::Bash => Self::Bash,
+            CompletionShell::Zsh => Self::Zsh,
+            CompletionShell::Fish => Self::Fish,
+            CompletionShell::PowerShell => Self::PowerShell,
+        }
+    }
 }
 
 impl Color {
@@ -103,6 +152,31 @@ fn same_file(input: &Metadata, output: &Metadata, input_path: &Path, output_path
     }
 }
 
+/// Replaces an existing file by renaming a fully written sibling temporary file.
+fn atomic_replace(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let target = path.canonicalize()?;
+    let permissions = fs::metadata(&target)?.permissions();
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let mut replacement = tempfile::NamedTempFile::new_in(parent)?;
+    replacement.write_all(contents)?;
+    replacement.as_file().set_permissions(permissions)?;
+    replacement.as_file().sync_all()?;
+    replacement.persist(&target).map_err(|error| error.error)?;
+    Ok(())
+}
+
+/// Parses arguments and rejects replacement requests that target standard input.
+fn parse_args() -> Result<Args, clap::Error> {
+    let args = Args::try_parse()?;
+    if (args.replace || args.replace_atomic) && !is_file(args.input.as_deref()) {
+        return Err(Args::command().error(
+            clap::error::ErrorKind::InvalidValue,
+            "in-place replacement requires an input file; stdin cannot be replaced",
+        ));
+    }
+    Ok(args)
+}
+
 /// Executes one formatting request using the parsed `args`.
 ///
 /// The whole source is read as UTF-8 and formatted before opening an output file,
@@ -111,6 +185,17 @@ fn same_file(input: &Metadata, output: &Metadata, input_path: &Path, output_path
 /// leave partial file output: this is not an atomic file-replacement operation.
 /// Errors include the relevant input or output label when available.
 fn run(args: Args) -> io::Result<()> {
+    if let Some(shell) = args.complete {
+        let mut script = Vec::new();
+        let shell: clap_complete::Shell = shell.into();
+        clap_complete::generate(shell, &mut Args::command(), "asonfmt", &mut script);
+        let stdout = io::stdout();
+        let mut stdout = stdout.lock();
+        stdout.write_all(&script)?;
+        stdout.flush()?;
+        return Ok(());
+    }
+
     let input_path = args.input.as_deref();
     let input_label = if is_file(input_path) {
         input_path.unwrap().display().to_string()
@@ -145,7 +230,18 @@ fn run(args: Args) -> io::Result<()> {
     )
     .map_err(|error| invalid(error, &input_label))?;
     let output_path = args.output.as_deref();
-    if is_file(output_path) {
+    if args.replace_atomic {
+        atomic_replace(input_path.unwrap(), formatted.as_bytes())
+            .map_err(|error| contextual(error, &input_label))?;
+    } else if args.replace {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(input_path.unwrap())
+            .map_err(|error| contextual(error, &input_label))?;
+        file.write_all(formatted.as_bytes())
+            .map_err(|error| contextual(error, &input_label))?;
+    } else if is_file(output_path) {
         let path = output_path.unwrap();
         let label = path.display().to_string();
         // Do not truncate on open: the destination may be a hard link or symlink
@@ -195,12 +291,25 @@ fn run(args: Args) -> io::Result<()> {
 /// A broken pipe is a successful early stop, as when a downstream command has
 /// read enough output. Clap handles its own argument errors before `run` starts.
 fn main() -> ExitCode {
-    match run(Args::parse()) {
+    let args = match parse_args() {
+        Ok(args) => args,
+        Err(error) => {
+            let code = if error.use_stderr() { 1 } else { 0 };
+            let _ = error.print();
+            return ExitCode::from(code);
+        }
+    };
+    match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(error) => {
+            let code = if error.kind() == io::ErrorKind::InvalidData {
+                2
+            } else {
+                3
+            };
             eprintln!("asonfmt: {error}");
-            ExitCode::FAILURE
+            ExitCode::from(code)
         }
     }
 }

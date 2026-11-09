@@ -2,23 +2,98 @@
 
 Source-preserving formatting and syntax highlighting for [ASON](https://github.com/hemashushu/ason).
 
-The workspace contains the `ason-format` Rust library and the `asonfmt` executable (built by the `ason-format-cli` crate).
+This repository provides the `ason-format` Rust library and the `asonfmt` command-line tool.
 
+<!-- @import "[TOC]" {cmd="toc" depthFrom=2 depthTo=4 orderedList=false} -->
 
+<!-- code_chunk_output -->
 
-## Build
+- [1 Features](#1-features)
+- [2 Using the `asonfmt` CLI](#2-using-the-asonfmt-cli)
+- [3 Using the `ason-format` Library](#3-using-the-ason-format-library)
+  - [3.1 Formatting](#31-formatting)
+  - [3.2 Highlighting](#32-highlighting)
+- [4 Links](#4-links)
+- [5 License](#5-license)
 
-```sh
-cargo build --workspace
-cargo test --workspace
+<!-- /code_chunk_output -->
+
+## 1 Features
+
+- Source-preserving formatting for ASON documents.
+- Syntax highlighting with ANSI and HTML output.
+- Configurable indentation and layout options.
+- Validation of collection type consistency.
+
+## 2 Using the `asonfmt` CLI
+
+Install the `asonfmt` CLI with Cargo by running `cargo install asonfmt`. To install it from a local clone of the repository, run `cargo install --path crates/asonfmt`.
+
+Alternatively, build from source with `cargo build -p asonfmt`.
+
+```text
+NAME
+    asonfmt - Source-preserving formatting and syntax highlighting for ASON documents
+
+USAGE
+    asonfmt [OPTIONS] [INPUT]
+
+ARGUMENTS
+    INPUT                   Input file (defaults to standard input)
+
+OPTIONS
+    -r, --replace           Overwrite the input file with formatted output
+        --replace-atomic    Use atomic replacement when overwriting the input file
+    -o, --output OUTPUT     Write output to this file (defaults to standard output)
+    -c, --color COLOR       Set color mode (auto, always, never)
+        --indent_width      Spaces per indentation level (default: 4)
+        --complete SHELL    Print a completion script to standard output
+                            Supported shells: bash, zsh, fish, PowerShell
+    -h, --help              Show help information
+    -V, --version           Show version information
+
+EXIT STATUS
+    0   Successful formatting
+    1   Invalid arguments
+    2   Document error and failed formatting
+    3   I/O errors
+
+DESCRIPTION
+    `INPUT` is optional; if omitted, input is read from stdin. `-o/--output FILE`
+    is also optional and defaults to stdout. The `--color` option accepts
+    `auto`, `always`, or `never` and defaults to `auto`. Automatic color is
+    enabled only when stdout is a terminal, `NO_COLOR` is unset, and `TERM` is
+    not `dumb`. Explicit `always` or `never` overrides these environment
+    settings, but output files are never colored.
+
+    The `-r/--replace` option replaces the input file with formatted output.
+    By default, replacement is not atomic, so a write failure can leave a
+    partially written file. Use `--replace-atomic` for safer in-place updates.
+
+EXAMPLES
+    * stdin to stdout; colors are automatic when stdout is a terminal
+    printf '{answer: 42}' | asonfmt
+
+    * File to stdout; colors are automatic when stdout is a terminal
+    asonfmt input.ason
+
+    * File to file; no color applied
+    asonfmt input.ason -o output.ason
+
+    * Explicit standard streams and layout/color settings
+    cat input.ason | asonfmt --indent-width 2 --color never
 ```
 
-Development currently uses a local ASON dependency at `/Users/yang/projects/ason`.
-That checkout must include the new `ason::syntax` API. Both the path dependency
-and reference-example tests use this location; this setup is not yet portable
-or ready for publishing to crates.io. The projects use Rust edition 2024.
+## 3 Using the `ason-format` Library
 
-## Formatting
+Add the following to your `Cargo.toml`:
+
+```toml
+[dependencies]
+ason-format = "1.0"
+```
+
+### 3.1 Formatting
 
 ```rust
 use ason_format::{FormatOptions, format, format_with_options};
@@ -26,7 +101,6 @@ use ason_format::{FormatOptions, format, format_with_options};
 let source = r#"{name: "Alice", values: [0xff, 0b10]}"#;
 let formatted = format(source)?;
 let two_spaces = format_with_options(source, &FormatOptions { indent_width: 2 })?;
-# Ok::<(), ason_format::AsonError>(())
 ```
 
 Default output:
@@ -41,7 +115,7 @@ Default output:
 }
 ```
 
-Formatting validates exactly one root value, then applies these rules:
+Formatting validates that the input contains exactly one root value before applying these rules:
 
 - Four spaces per level by default; zero indentation still emits line breaks.
 - Nonempty containers and enumeration payloads span multiple lines.
@@ -60,7 +134,7 @@ Missing object fields and empty collections remain compatible with types inferre
 from other elements. Target-specific defaults and the complete definitions of
 enumeration types cannot be validated without an application schema.
 
-## Highlighting
+### 3.2 Highlighting
 
 ```rust
 use ason_format::{highlight_spans, highlight_ansi, highlight_html};
@@ -69,11 +143,11 @@ let source = "{count: 0xff} // unchanged source\n";
 let spans = highlight_spans(source)?;
 let terminal_text = highlight_ansi(source)?;
 let html = highlight_html(source)?;
-# Ok::<(), ason_format::AsonError>(())
 ```
 
-- `highlight_spans` returns ordered `HighlightSpan { kind, span }` values, where
-  `span` is a half-open **UTF-8 byte range** into the input. Whitespace is omitted.
+- `highlight_spans` returns ordered `HighlightSpan { kind, span }` values. Each
+  `span` is a half-open UTF-8 byte range (`[start..end)`) in the input; whitespace
+  is omitted.
 - `highlight_ansi` inserts SGR colors and resets without formatting the source.
   It does not detect terminals or sanitize existing input control characters;
   take care when displaying untrusted documents in a terminal.
@@ -100,44 +174,11 @@ Example stylesheet:
 .ason-punctuation { color: #24292f; }
 ```
 
-## CLI
+## 4 Links
 
-```sh
-# stdin to stdout
-printf '{answer: 42}' | cargo run -q -p ason-format-cli --
+- [ASON Specification](https://github.com/hemashushu/ason/blob/main/docs/specification.md)
+- [ASON Converter](https://github.com/hemashushu/ason-converter)
 
-# File to stdout; colors are automatic when stdout is a terminal
-cargo run -q -p ason-format-cli -- document.ason
+## 5 License
 
-# File to file; always plain text
-cargo run -q -p ason-format-cli -- document.ason -o formatted.ason
-
-# Explicit standard streams and layout/color settings
-cat document.ason | cargo run -q -p ason-format-cli -- - -o - --indent-width 2 --color never
-```
-
-`INPUT` is optional; omit it or pass `-` for stdin. `-o/--output FILE` defaults to
-stdout; `-o -` also selects stdout. `--color auto|always|never` defaults to `auto`.
-Automatic color requires terminal stdout, no `NO_COLOR` environment variable,
-and `TERM` other than `dumb`. Explicit `always` or `never` overrides those
-environment settings, but actual output files are never colored.
-
-There is no in-place mode. Input/output aliases, including Unix symbolic links
-and hard links, are rejected before truncation. Invalid input never truncates an
-existing output file. Normal file output is not an atomic replacement, so a
-write failure can leave partial output. Diagnostics go to stderr; exit status is
-1 for document/I/O errors and 2 for invalid arguments. A closed stdout pipe is
-treated as successful termination.
-
-## Verification
-
-```sh
-cargo test --workspace
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --manifest-path /Users/yang/projects/ason/Cargo.toml
-```
-
-Tests cover source preservation, semantic equivalence, idempotence, reference
-examples, Unicode byte ranges, HTML escaping, ANSI round trips, CLI streams,
-color policy, and output-file protection.
+This project is licensed under the MPL 2.0 License with additional terms. See [LICENSE](./LICENSE) and [LICENSE.additional](./LICENSE.additional).

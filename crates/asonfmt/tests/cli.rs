@@ -79,7 +79,12 @@ impl Drop for Temp {
 fn executable_name() {
     let help = command().arg("--help").output().unwrap();
     assert!(help.status.success());
-    assert!(String::from_utf8_lossy(&help.stdout).contains("Usage: asonfmt"));
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("Usage: asonfmt"));
+    assert!(help.contains("--replace"));
+    assert!(help.contains("--replace-atomic"));
+    assert!(help.contains("--complete <SHELL>"));
+    assert!(help.contains("PowerShell"));
     let version = command().arg("--version").output().unwrap();
     assert!(version.status.success());
     assert!(String::from_utf8_lossy(&version.stdout).starts_with("asonfmt "));
@@ -135,10 +140,50 @@ fn files_and_output_protection() {
         .arg(&output)
         .output()
         .unwrap();
-    assert_eq!(result.status.code(), Some(1));
+    assert_eq!(result.status.code(), Some(2));
     assert!(!result.stderr.is_empty());
     assert!(result.stdout.is_empty());
     assert_eq!(fs::read(&output).unwrap(), before);
+}
+
+#[test]
+/// Applies the documented non-atomic and atomic in-place replacement modes.
+fn in_place_replacement_modes() {
+    let temp = Temp::new();
+    let input = temp.file("input.ason");
+    fs::write(&input, "{a:1}").unwrap();
+    let result = command().arg(&input).arg("--replace").output().unwrap();
+    assert!(result.status.success(), "{:?}", result.stderr);
+    assert!(result.stdout.is_empty());
+    assert_eq!(fs::read(&input).unwrap(), b"{\n    a: 1\n}\n");
+
+    fs::write(&input, "[1 2]").unwrap();
+    let result = command()
+        .arg(&input)
+        .arg("--replace-atomic")
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{:?}", result.stderr);
+    assert!(result.stdout.is_empty());
+    assert_eq!(fs::read(&input).unwrap(), b"[\n    1\n    2\n]\n");
+
+    let result = command()
+        .args(["-", "--replace"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(1));
+}
+
+#[test]
+/// Emits completion scripts for each shell named by the README.
+fn completion_scripts() {
+    for shell in ["bash", "zsh", "fish", "PowerShell", "powershell"] {
+        let result = command().args(["--complete", shell]).output().unwrap();
+        assert!(result.status.success(), "{shell}: {:?}", result.stderr);
+        assert!(!result.stdout.is_empty(), "{shell}");
+        assert!(String::from_utf8_lossy(&result.stdout).contains("asonfmt"));
+    }
 }
 
 #[test]
@@ -165,7 +210,7 @@ fn rejects_aliases_without_truncating() {
             .arg(output)
             .output()
             .unwrap();
-        assert_eq!(result.status.code(), Some(1));
+        assert_eq!(result.status.code(), Some(3));
         assert_eq!(fs::read(&input).unwrap(), b"[1 2]");
     }
 }
@@ -175,20 +220,20 @@ fn rejects_aliases_without_truncating() {
 fn errors_are_on_stderr() {
     for source in [b"[".as_slice(), b"1 2", b"\xff"] {
         let result = stdin(&[], source);
-        assert_eq!(result.status.code(), Some(1));
+        assert_eq!(result.status.code(), Some(2));
         assert!(result.stdout.is_empty());
         assert!(String::from_utf8_lossy(&result.stderr).contains("stdin"));
     }
     let result = command().arg("--unknown").output().unwrap();
-    assert_eq!(result.status.code(), Some(2));
+    assert_eq!(result.status.code(), Some(1));
     assert!(result.stdout.is_empty());
     let temp = Temp::new();
     let result = command().arg(temp.file("absent.ason")).output().unwrap();
-    assert_eq!(result.status.code(), Some(1));
+    assert_eq!(result.status.code(), Some(3));
     assert!(!result.stderr.is_empty());
     // A directory is not a writable output file, even when the input is valid.
     let result = stdin(&["-o", temp.0.to_str().unwrap()], b"1");
-    assert_eq!(result.status.code(), Some(1));
+    assert_eq!(result.status.code(), Some(3));
 }
 
 #[test]
