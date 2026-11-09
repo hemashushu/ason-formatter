@@ -66,8 +66,9 @@ EXIT STATUS
 DESCRIPTION
     `INPUT` is optional; if omitted, input is read from stdin. A path named `-`
     is treated as a file. `-o/--output FILE` is also optional and defaults to
-    stdout when omitted; an output path named `-` is treated as a file. The
-    `--color` option accepts `auto`, `always`, or `never` and defaults to `auto`.
+    stdout when omitted; an output path named `-` is treated as a file.
+
+    The `--color` option accepts `auto`, `always`, or `never` and defaults to `auto`.
     Automatic color is enabled only when stdout is a terminal, `NO_COLOR` is
     unset, and `TERM` is not `dumb`. Explicit `always` or `never` overrides
     these environment settings, but output files are never colored.
@@ -75,11 +76,13 @@ DESCRIPTION
     The `-r/--replace` option replaces the input file with formatted output.
     By default, replacement is not atomic, so a write failure can leave a
     partially written file. Use `--replace-atomic` for safer in-place updates.
+
     With `--indent-style tabs`, the formatter emits one tab per nesting level.
     `--indent-width` then sets how many visual columns each tab occupies when
     fitting lines; it does not set the number of tabs. A width of zero still
     emits tabs, but counts them as zero columns for line fitting. With spaces,
     the width is the number of spaces per level, and zero emits no indentation.
+
     `--line-ending` controls generated structural breaks; line endings inside
     literals and comments are preserved as written.
 
@@ -103,7 +106,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ason-format = "1.0"
+ason-format = "1.1"
 ```
 
 ### 3.1 Formatting
