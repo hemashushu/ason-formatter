@@ -64,6 +64,8 @@ dependencies = [
 [[package]]
 name = "ason"
 version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49db77e550d446db7698f509155bb09dc2d07a2e93f7ce9561ce89106feb70b6"
 dependencies = [
  "chrono",
  "hexfloat2",

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Hemashushu <hippospark@gmail.com>, All rights reserved.
+//
+// This Source Code Form is subject to the terms of
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
+
 //! End-to-end checks against the built CLI, including streams and real files.
 //!
 //! Each child gets a predictable color environment, and each file-based test gets
@@ -83,6 +89,7 @@ fn executable_name() {
     assert!(help.contains("Usage: asonfmt"));
     assert!(help.contains("--replace"));
     assert!(help.contains("--replace-atomic"));
+    assert!(help.contains("-c, --color <COLOR>"));
     assert!(help.contains("--complete <SHELL>"));
     assert!(help.contains("PowerShell"));
     let version = command().arg("--version").output().unwrap();
@@ -93,19 +100,49 @@ fn executable_name() {
 }
 
 #[test]
-/// Checks stream defaults, explicit `-` markers, indentation, and forced colors.
+/// Checks omitted-path stream defaults, indentation, and forced colors.
 fn stdin_stdout_and_color() {
     let output = stdin(&[], b"{a:1}");
     assert!(output.status.success());
-    assert_eq!(output.stdout, b"{\n    a: 1\n}\n");
+    assert_eq!(output.stdout, b"{a: 1}\n");
     assert!(output.stderr.is_empty());
-    let output = stdin(&["-", "-o", "-", "--indent-width", "2"], b"[1 2]");
-    assert_eq!(output.stdout, b"[\n  1\n  2\n]\n");
+    let output = stdin(&["--indent-width", "2"], b"[1 2]");
+    assert_eq!(output.stdout, b"[1 2]\n");
     let output = stdin(&["--color", "always"], b"1");
     assert!(output.status.success());
     assert!(output.stdout.contains(&0x1b));
     let output = stdin(&["--color", "never"], b"1");
     assert_eq!(output.stdout, b"1\n");
+    let output = stdin(&["-c", "never"], b"1");
+    assert_eq!(output.stdout, b"1\n");
+}
+
+#[test]
+/// Treats a path spelled `-` as a file for both input and output.
+fn dash_is_a_file_path() {
+    let temp = Temp::new();
+    let dash = temp.file("-");
+    fs::write(&dash, "{a:1}").unwrap();
+    let result = command()
+        .current_dir(&temp.0)
+        .arg("-")
+        .args(["--color", "never"])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{:?}", result.stderr);
+    assert_eq!(result.stdout, b"{a: 1}\n");
+    assert_eq!(fs::read(&dash).unwrap(), b"{a:1}");
+
+    let input = temp.file("input.ason");
+    fs::write(&input, "[1 2]").unwrap();
+    let result = command()
+        .current_dir(&temp.0)
+        .args(["input.ason", "-o", "-"])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{:?}", result.stderr);
+    assert!(result.stdout.is_empty());
+    assert_eq!(fs::read(&dash).unwrap(), b"[1 2]\n");
 }
 
 #[test]
@@ -124,10 +161,7 @@ fn files_and_output_protection() {
         .unwrap();
     assert!(result.status.success(), "{:?}", result.stderr);
     assert!(result.stdout.is_empty());
-    assert_eq!(
-        fs::read_to_string(&output).unwrap(),
-        "[\n    0xff\n    0b10\n]\n"
-    );
+    assert_eq!(fs::read_to_string(&output).unwrap(), "[0xff 0b10]\n");
     let result = command().arg(&input).output().unwrap();
     assert!(result.status.success());
     assert_eq!(result.stdout, fs::read(&output).unwrap());
@@ -155,7 +189,7 @@ fn in_place_replacement_modes() {
     let result = command().arg(&input).arg("--replace").output().unwrap();
     assert!(result.status.success(), "{:?}", result.stderr);
     assert!(result.stdout.is_empty());
-    assert_eq!(fs::read(&input).unwrap(), b"{\n    a: 1\n}\n");
+    assert_eq!(fs::read(&input).unwrap(), b"{a: 1}\n");
 
     fs::write(&input, "[1 2]").unwrap();
     let result = command()
@@ -165,10 +199,10 @@ fn in_place_replacement_modes() {
         .unwrap();
     assert!(result.status.success(), "{:?}", result.stderr);
     assert!(result.stdout.is_empty());
-    assert_eq!(fs::read(&input).unwrap(), b"[\n    1\n    2\n]\n");
+    assert_eq!(fs::read(&input).unwrap(), b"[1 2]\n");
 
     let result = command()
-        .args(["-", "--replace"])
+        .args(["--replace"])
         .stdin(Stdio::null())
         .output()
         .unwrap();

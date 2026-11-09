@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Hemashushu <hippospark@gmail.com>, All rights reserved.
+//
+// This Source Code Form is subject to the terms of
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
+
 //! Validate document values, plan structural spacing, and copy original tokens.
 //!
 //! Parsing and rendering serve different purposes here. Parsed values let us
@@ -8,6 +14,8 @@
 use ason::syntax::{SyntaxKind, SyntaxToken, tokenize};
 
 use crate::AsonError;
+
+const MAX_LINE_WIDTH: usize = 80;
 
 /// Controls the whitespace added around tokens during formatting.
 ///
@@ -24,7 +32,7 @@ pub struct FormatOptions {
 }
 
 impl Default for FormatOptions {
-    /// Uses four spaces per level, with the usual multiline container layout.
+    /// Uses four spaces per level and keeps containers on one line when they fit.
     fn default() -> Self {
         Self { indent_width: 4 }
     }
@@ -37,9 +45,11 @@ impl Default for FormatOptions {
 /// * `source` - UTF-8 text containing exactly one ASON value, with optional
 ///   surrounding whitespace and comments.
 ///
-/// Nonempty containers use multiple lines, optional commas are removed, and the
-/// result ends with a newline. Literal spellings and comment bodies are kept
-/// exactly as written. Formatting an already formatted result leaves it unchanged.
+/// Containers without comments or multiline tokens stay on one line when the
+/// result fits within 80 characters; otherwise, nonempty containers use
+/// multiple lines. Optional commas are removed, and the result ends with a
+/// newline. Literal spellings and comment bodies are kept exactly as written.
+/// Formatting an already formatted result leaves it unchanged.
 ///
 /// # Errors
 ///
@@ -51,7 +61,7 @@ impl Default for FormatOptions {
 /// ```
 /// use ason_format::format;
 ///
-/// assert_eq!(format("{answer:0x2a}")?, "{\n    answer: 0x2a\n}\n");
+/// assert_eq!(format("{answer:0x2a}")?, "{answer: 0x2a}\n");
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn format(source: &str) -> Result<String, AsonError> {
@@ -85,7 +95,7 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 /// use ason_format::{FormatOptions, format_with_options};
 ///
 /// let options = FormatOptions { indent_width: 2 };
-/// assert_eq!(format_with_options("[1,2]", &options)?, "[\n  1\n  2\n]\n");
+/// assert_eq!(format_with_options("[1,2]", &options)?, "[1 2]\n");
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<String, AsonError> {
@@ -98,12 +108,19 @@ pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<Stri
         .collect();
     // Comments do not participate in the grammar walk. Keep them in `tokens`
     // so the writer can restore them without disturbing structural decisions.
+    let comments: Vec<_> = tokens
+        .iter()
+        .filter(|token| is_comment(token.kind))
+        .collect();
     let semantic: Vec<_> = tokens
         .iter()
         .filter(|token| !is_comment(token.kind))
         .collect();
     let mut layout = Layout {
+        source,
         tokens: &semantic,
+        comments: &comments,
+        indent_width: options.indent_width,
         cursor: 0,
         placements: Vec::new(),
     };
@@ -205,8 +222,14 @@ fn layout_error() -> AsonError {
 /// The input has no whitespace, commas, or comments. Each call to `consume`
 /// advances one token and appends one placement, keeping both streams aligned.
 struct Layout<'a> {
+    /// Original text used to measure the single-line form of containers.
+    source: &'a str,
     /// Borrowed structural tokens in source order; the source itself is unchanged.
     tokens: &'a [&'a SyntaxToken],
+    /// Comments excluded from the grammar walk but used to protect comment layout.
+    comments: &'a [&'a SyntaxToken],
+    /// Spaces per nesting level, used when measuring line width.
+    indent_width: usize,
     /// Index of the next token that has not yet received a placement.
     cursor: usize,
     /// Leading whitespace and nesting depth for each consumed token, in order.
@@ -261,7 +284,7 @@ impl Layout<'_> {
     ///
     /// Object keys are identifiers; other entries begin with values. A following
     /// colon handles both object fields and map entries, with one space before
-    /// the associated value. Nonempty containers put their closer on a new line.
+    /// the associated value. Containers use a compact layout when it fits.
     fn container(&mut self, depth: usize, gap: Gap) -> Result<(), AsonError> {
         let closing = match self.kind() {
             Some(SyntaxKind::BraceOpen) => SyntaxKind::BraceClose,
@@ -269,9 +292,11 @@ impl Layout<'_> {
             Some(SyntaxKind::ParenthesisOpen) => SyntaxKind::ParenthesisClose,
             _ => return Err(layout_error()),
         };
-        let opening = self.tokens[self.cursor];
+        let opening_index = self.cursor;
         self.consume(depth, gap);
+        let mut entries = Vec::new();
         while self.kind() != Some(closing) {
+            entries.push(self.cursor);
             if self.kind() == Some(SyntaxKind::Identifier) {
                 self.consume(depth + 1, Gap::Line);
             } else {
@@ -282,11 +307,75 @@ impl Layout<'_> {
                 self.value(depth + 1, Gap::Space)?;
             }
         }
-        // Token identity, not source distance, tells us whether an entry was
-        // consumed. Comments were filtered out and do not make a semantic entry.
-        let empty = self.cursor > 0 && self.tokens[self.cursor - 1].span == opening.span;
+        let closing_index = self.cursor;
+        let empty = entries.is_empty();
         self.consume(depth, if empty { Gap::None } else { Gap::Line });
+        if !empty && self.fits_single_line(opening_index, closing_index, &entries, depth) {
+            for (index, entry) in entries.iter().enumerate() {
+                self.placements[*entry].0 = if index == 0 { Gap::None } else { Gap::Space };
+            }
+            self.placements[closing_index].0 = Gap::None;
+        }
         Ok(())
+    }
+
+    /// Checks the compact form, counting indentation and rejecting comments or
+    /// tokens that already contain line breaks.
+    fn fits_single_line(
+        &self,
+        opening_index: usize,
+        closing_index: usize,
+        entries: &[usize],
+        depth: usize,
+    ) -> bool {
+        let opening = self.tokens[opening_index];
+        let closing = self.tokens[closing_index];
+        if self.comments.iter().any(|comment| {
+            comment.span.start > opening.span.start && comment.span.end < closing.span.end
+        }) {
+            return false;
+        }
+
+        let line_start = if opening_index > 0
+            && self.tokens[opening_index - 1].kind == SyntaxKind::Enumeration
+            && self.placements[opening_index].0 == Gap::None
+        {
+            opening_index - 1
+        } else {
+            opening_index
+        };
+        let Some(mut width) = depth.checked_mul(self.indent_width) else {
+            return false;
+        };
+        let mut entry_cursor = 0;
+        for index in line_start..=closing_index {
+            let token = self.tokens[index];
+            let text = &self.source[token.span.clone()];
+            if text.contains('\n') || text.contains('\r') {
+                return false;
+            }
+            width = width.saturating_add(text.chars().count());
+
+            if index == line_start || index == closing_index {
+                continue;
+            }
+            let gap_width = if entries.get(entry_cursor) == Some(&index) {
+                let gap_width = usize::from(entry_cursor > 0);
+                entry_cursor += 1;
+                gap_width
+            } else {
+                match self.placements[index].0 {
+                    Gap::None => 0,
+                    Gap::Space => 1,
+                    Gap::Line => return false,
+                }
+            };
+            width = width.saturating_add(gap_width);
+            if width > MAX_LINE_WIDTH {
+                return false;
+            }
+        }
+        width <= MAX_LINE_WIDTH
     }
 }
 
@@ -545,11 +634,18 @@ mod tests {
     }
 
     #[test]
-    /// Checks the standard multiline layout and compact empty containers.
+    /// Checks compact containers and compact empty containers.
     fn object_layout() {
         assert_eq!(
             check("{name: r\"Alice\", nums: [0xff, 0b10], pair: (true, '中')}"),
-            "{\n    name: r\"Alice\"\n    nums: [\n        0xff\n        0b10\n    ]\n    pair: (\n        true\n        '中'\n    )\n}\n"
+            "{name: r\"Alice\" nums: [0xff 0b10] pair: (true '中')}\n"
+        );
+        assert_eq!(check("[1 2 3]"), "[1 2 3]\n");
+        assert_eq!(check("[1: true 2: false]"), "[1: true 2: false]\n");
+        assert_eq!(check("Option::Some(1)"), "Option::Some(1)\n");
+        assert_eq!(
+            check("Shape::Rect{width: 200 height: 100}"),
+            "Shape::Rect{width: 200 height: 100}\n"
         );
         assert_eq!(check("[]"), "[]\n");
         assert_eq!(check("{}"), "{}\n");
@@ -595,16 +691,36 @@ mod tests {
     }
 
     #[test]
-    /// Confirms that custom widths change indentation but not line splitting.
+    /// Confirms compact values and custom indentation for values wider than 80.
     fn custom_indent() {
         assert_eq!(
             format_with_options("[1 2]", &FormatOptions { indent_width: 2 }).unwrap(),
-            "[\n  1\n  2\n]\n"
+            "[1 2]\n"
+        );
+        let item = "a".repeat(39);
+        let source = format!("[\"{item}\" \"{item}\"]");
+        assert_eq!(
+            format_with_options(&source, &FormatOptions { indent_width: 2 }).unwrap(),
+            format!("[\n  \"{item}\"\n  \"{item}\"\n]\n")
         );
         assert_eq!(
-            format_with_options("[1]", &FormatOptions { indent_width: 0 }).unwrap(),
-            "[\n1\n]\n"
+            format_with_options(&source, &FormatOptions { indent_width: 0 }).unwrap(),
+            format!("[\n\"{item}\"\n\"{item}\"\n]\n")
         );
+    }
+
+    #[test]
+    /// Keeps a container inline at 80 characters but wraps it at 81.
+    fn compact_width_boundary() {
+        let item = "x".repeat(76);
+        let source = format!("[\"{item}\"]");
+        assert_eq!(source.chars().count(), MAX_LINE_WIDTH);
+        assert_eq!(format(&source).unwrap(), format!("{source}\n"));
+
+        let item = "x".repeat(77);
+        let source = format!("[\"{item}\"]");
+        assert_eq!(source.chars().count(), MAX_LINE_WIDTH + 1);
+        assert_eq!(format(&source).unwrap(), format!("[\n    \"{item}\"\n]\n"));
     }
 
     #[test]

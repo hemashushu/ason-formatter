@@ -27,7 +27,9 @@ This repository provides the `ason-format` Rust library and the `asonfmt` comman
 
 ## 2 Using the `asonfmt` CLI
 
-Install the `asonfmt` CLI with Cargo by running `cargo install asonfmt`. To install it from a local clone of the repository, run `cargo install --path crates/asonfmt`.
+Install the `asonfmt` CLI with Cargo by running `cargo install asonfmt`. To
+install it from a local clone of the repository, run
+`cargo install --path crates/asonfmt`.
 
 Alternatively, build from source with `cargo build -p asonfmt`.
 
@@ -39,18 +41,18 @@ USAGE
     asonfmt [OPTIONS] [INPUT]
 
 ARGUMENTS
-    INPUT                   Input file (defaults to standard input)
+    INPUT                   Input file (defaults to standard input when omitted)
 
 OPTIONS
-    -r, --replace           Overwrite the input file with formatted output
-        --replace-atomic    Use atomic replacement when overwriting the input file
-    -o, --output OUTPUT     Write output to this file (defaults to standard output)
-    -c, --color COLOR       Set color mode (auto, always, never)
-        --indent_width      Spaces per indentation level (default: 4)
-        --complete SHELL    Print a completion script to standard output
-                            Supported shells: bash, zsh, fish, PowerShell
-    -h, --help              Show help information
-    -V, --version           Show version information
+    -r, --replace             Overwrite the input file with formatted output
+        --replace-atomic      Use atomic replacement when overwriting the input file
+    -o, --output OUTPUT       Write output to this file (defaults to standard output when omitted)
+    -c, --color COLOR         Set color mode (auto, always, never)
+        --indent-width WIDTH  Spaces per indentation level (default: 4)
+        --complete SHELL      Print a completion script to standard output
+                              Supported shells: bash, zsh, fish, PowerShell
+    -h, --help                Show help information
+    -V, --version             Show version information
 
 EXIT STATUS
     0   Successful formatting
@@ -59,12 +61,13 @@ EXIT STATUS
     3   I/O errors
 
 DESCRIPTION
-    `INPUT` is optional; if omitted, input is read from stdin. `-o/--output FILE`
-    is also optional and defaults to stdout. The `--color` option accepts
-    `auto`, `always`, or `never` and defaults to `auto`. Automatic color is
-    enabled only when stdout is a terminal, `NO_COLOR` is unset, and `TERM` is
-    not `dumb`. Explicit `always` or `never` overrides these environment
-    settings, but output files are never colored.
+    `INPUT` is optional; if omitted, input is read from stdin. A path named `-`
+    is treated as a file. `-o/--output FILE` is also optional and defaults to
+    stdout when omitted; an output path named `-` is treated as a file. The
+    `--color` option accepts `auto`, `always`, or `never` and defaults to `auto`.
+    Automatic color is enabled only when stdout is a terminal, `NO_COLOR` is
+    unset, and `TERM` is not `dumb`. Explicit `always` or `never` overrides
+    these environment settings, but output files are never colored.
 
     The `-r/--replace` option replaces the input file with formatted output.
     By default, replacement is not atomic, so a write failure can leave a
@@ -80,7 +83,7 @@ EXAMPLES
     * File to file; no color applied
     asonfmt input.ason -o output.ason
 
-    * Explicit standard streams and layout/color settings
+    * Piped input and layout/color settings
     cat input.ason | asonfmt --indent-width 2 --color never
 ```
 
@@ -98,27 +101,29 @@ ason-format = "1.0"
 ```rust
 use ason_format::{FormatOptions, format, format_with_options};
 
-let source = r#"{name: "Alice", values: [0xff, 0b10]}"#;
-let formatted = format(source)?;
-let two_spaces = format_with_options(source, &FormatOptions { indent_width: 2 })?;
+fn main() -> Result<(), ason_format::AsonError> {
+  let source = r#"{name: "Alice", values: [0xff, 0b10]}"#;
+  let formatted = format(source)?;
+  let two_spaces = format_with_options(source, &FormatOptions { indent_width: 2 })?;
+  println!("{formatted}");
+  println!("{two_spaces}");
+  Ok(())
+}
 ```
 
 Default output:
 
 ```text
-{
-    name: "Alice"
-    values: [
-        0xff
-        0b10
-    ]
-}
+{name: "Alice" values: [0xff 0b10]}
 ```
 
 Formatting validates that the input contains exactly one root value before applying these rules:
 
 - Four spaces per level by default; zero indentation still emits line breaks.
-- Nonempty containers and enumeration payloads span multiple lines.
+- Nonempty containers and enumeration payloads without comments or multiline
+  literals stay on one line when the formatted line, including indentation, fits
+  within 80 characters; otherwise, they span multiple lines. For example,
+  `[1 2 3]` stays on one line.
 - Empty `[]` and `{}` stay compact unless they contain comments; empty tuples are invalid.
 - One space follows a colon. Optional commas and extra blank lines are removed.
 - Generated line breaks use LF, and the document ends with one layout newline.
@@ -139,10 +144,16 @@ enumeration types cannot be validated without an application schema.
 ```rust
 use ason_format::{highlight_spans, highlight_ansi, highlight_html};
 
-let source = "{count: 0xff} // unchanged source\n";
-let spans = highlight_spans(source)?;
-let terminal_text = highlight_ansi(source)?;
-let html = highlight_html(source)?;
+fn main() -> Result<(), ason_format::AsonError> {
+  let source = "{count: 0xff} // unchanged source\n";
+  let spans = highlight_spans(source)?;
+  let terminal_text = highlight_ansi(source)?;
+  let html = highlight_html(source)?;
+  println!("{spans:?}");
+  println!("{terminal_text}");
+  println!("{html}");
+  Ok(())
+}
 ```
 
 - `highlight_spans` returns ordered `HighlightSpan { kind, span }` values. Each

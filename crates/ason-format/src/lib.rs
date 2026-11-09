@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Hemashushu <hippospark@gmail.com>, All rights reserved.
+//
+// This Source Code Form is subject to the terms of
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
+
 //! Source-preserving formatting and syntax highlighting for ASON documents.
 //!
 //! Use [`format()`] for the default layout or [`format_with_options`] to choose an
@@ -16,7 +22,7 @@
 //! use ason_format::{format, highlight_html};
 //!
 //! let formatted = format("{enabled:true}")?;
-//! assert_eq!(formatted, "{\n    enabled: true\n}\n");
+//! assert_eq!(formatted, "{enabled: true}\n");
 //! let html = highlight_html(&formatted)?;
 //! assert!(html.contains("class=\"ason-boolean\">true</span>"));
 //! # Ok::<(), ason_format::AsonError>(())

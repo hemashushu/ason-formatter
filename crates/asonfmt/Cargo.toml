@@ -2,9 +2,21 @@
 name = "asonfmt"
 version = "1.0.0"
 edition = "2024"
+description = "Command-line formatter and syntax highlighter for ASON documents"
+license-file = "LICENSE.additional"
+repository = "https://github.com/hemashushu/ason-formatter"
+documentation = "https://docs.rs/asonfmt"
+keywords = [
+    "ason",
+    "formatter",
+    "command-line",
+    "syntax-highlighting",
+    "pretty-printing",
+]
+categories = ["command-line-utilities"]
 
 [dependencies]
-ason-format = { path = "../ason-format" }
+ason-format = { path = "../ason-format", version = "1.0" }
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"
 tempfile = "3"

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Hemashushu <hippospark@gmail.com>, All rights reserved.
+//
+// This Source Code Form is subject to the terms of
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
+
 //! Command-line input/output around the source-preserving ASON formatter.
 //!
 //! Read and validate all input before touching the destination. File output is
@@ -22,8 +28,7 @@ use clap::{CommandFactory, Parser, ValueEnum};
     about = "Source-preserving formatting and syntax highlighting for ASON documents"
 )]
 struct Args {
-    /// Input file; omit or use - to read standard input
-    // Keep this help text short. `None` and the literal path `-` both select stdin.
+    /// Input file; defaults to standard input when omitted
     input: Option<PathBuf>,
     /// Overwrite the input file with formatted output (not atomic)
     #[arg(
@@ -40,7 +45,7 @@ struct Args {
         conflicts_with_all = ["replace", "output", "complete"]
     )]
     replace_atomic: bool,
-    /// Output file; omit or use - to write standard output
+    /// Output file; defaults to standard output when omitted
     #[arg(
         short,
         long,
@@ -53,7 +58,7 @@ struct Args {
     #[arg(long, default_value_t = 4)]
     indent_width: usize,
     /// Color standard output (output files are always plain text)
-    #[arg(long, value_enum, default_value_t = Color::Auto)]
+    #[arg(short = 'c', long, value_enum, default_value_t = Color::Auto)]
     color: Color,
     /// Print a completion script to standard output
     #[arg(
@@ -112,9 +117,9 @@ impl Color {
     }
 }
 
-/// Distinguishes a real file argument from an omitted path or the `-` stream marker.
+/// Checks whether a file path argument was supplied.
 fn is_file(path: Option<&Path>) -> bool {
-    path.is_some_and(|path| path != Path::new("-"))
+    path.is_some()
 }
 
 /// Adds a path or stream `label` to an I/O `error` while keeping its error kind.

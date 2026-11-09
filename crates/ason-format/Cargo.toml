@@ -2,6 +2,18 @@
 name = "ason-format"
 version = "1.0.0"
 edition = "2024"
+description = "Source-preserving formatter and syntax highlighter for ASON documents"
+license-file = "LICENSE.additional"
+repository = "https://github.com/hemashushu/ason-formatter"
+documentation = "https://docs.rs/ason-format"
+keywords = [
+    "ason",
+    "formatter",
+    "syntax-highlighting",
+    "data-format",
+    "pretty-printing",
+]
+categories = ["text-processing"]
 
 [dependencies]
-ason = { path = "../../../ason", version = "3.4" }
+ason = "3.4"
