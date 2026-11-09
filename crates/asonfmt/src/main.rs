@@ -17,7 +17,7 @@ use std::{
     process::ExitCode,
 };
 
-use ason_format::{FormatOptions, format_with_options, highlight_ansi};
+use ason_format::{FormatOptions, IndentStyle, LineEnding, format_with_options, highlight_ansi};
 use clap::{CommandFactory, Parser, ValueEnum};
 
 /// Command-line settings parsed by clap, which also supplies help and usage errors.
@@ -53,10 +53,16 @@ struct Args {
         conflicts_with_all = ["replace", "replace_atomic", "complete"]
     )]
     output: Option<PathBuf>,
-    /// Spaces per indentation level
-    // Zero retains structural newlines without adding indentation spaces.
+    /// Indentation width: spaces per level, or tab width for line fitting
+    // Tabs still emit one tab per nesting level, regardless of this width.
     #[arg(long, default_value_t = 4)]
     indent_width: usize,
+    /// Structural indentation style
+    #[arg(long, value_enum, default_value_t = CliIndentStyle::Spaces)]
+    indent_style: CliIndentStyle,
+    /// Structural line ending
+    #[arg(long, value_enum, default_value_t = CliLineEnding::Lf)]
+    line_ending: CliLineEnding,
     /// Color standard output (output files are always plain text)
     #[arg(short = 'c', long, value_enum, default_value_t = Color::Auto)]
     color: Color,
@@ -68,6 +74,37 @@ struct Args {
         conflicts_with_all = ["input", "output", "replace", "replace_atomic"]
     )]
     complete: Option<CompletionShell>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CliIndentStyle {
+    Spaces,
+    Tabs,
+}
+
+impl From<CliIndentStyle> for IndentStyle {
+    fn from(style: CliIndentStyle) -> Self {
+        match style {
+            CliIndentStyle::Spaces => Self::Spaces,
+            CliIndentStyle::Tabs => Self::Tabs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CliLineEnding {
+    Lf,
+    #[value(name = "crlf")]
+    CrLf,
+}
+
+impl From<CliLineEnding> for LineEnding {
+    fn from(line_ending: CliLineEnding) -> Self {
+        match line_ending {
+            CliLineEnding::Lf => Self::Lf,
+            CliLineEnding::CrLf => Self::CrLf,
+        }
+    }
 }
 
 /// Requested color policy for stdout; this never affects an output file.
@@ -231,6 +268,9 @@ fn run(args: Args) -> io::Result<()> {
         &source,
         &FormatOptions {
             indent_width: args.indent_width,
+            indent_style: args.indent_style.into(),
+            line_ending: args.line_ending.into(),
+            ..FormatOptions::default()
         },
     )
     .map_err(|error| invalid(error, &input_label))?;

@@ -23,19 +23,54 @@ const MAX_LINE_WIDTH: usize = 80;
 /// multiple lines. These settings affect surrounding layout, not their contents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormatOptions {
-    /// The number of spaces added for each level of nesting.
+    /// The number of spaces per nesting level. With tabs, one tab is emitted per
+    /// level and this value is the tab's visual width for line-fit calculations;
+    /// it does not control the number of tab characters emitted.
     ///
-    /// The default is four. Zero removes indentation but still emits structural
-    /// line breaks. A width that cannot be represented or reserved when writing
+    /// The default is four. A width of zero removes space indentation, but tabs
+    /// are still emitted once per level; zero only affects line-fit calculations
+    /// in that mode. A width that cannot be represented or reserved when writing
     /// an indented token makes formatting return an error.
     pub indent_width: usize,
+    pub indent_style: IndentStyle,
+    pub line_ending: LineEnding,
 }
 
 impl Default for FormatOptions {
     /// Uses four spaces per level and keeps containers on one line when they fit.
     fn default() -> Self {
-        Self { indent_width: 4 }
+        Self {
+            indent_width: 4,
+            indent_style: IndentStyle::Spaces,
+            line_ending: LineEnding::Lf,
+        }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndentStyle {
+    Spaces,
+    Tabs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineEnding {
+    Lf,
+    CrLf,
+}
+
+impl LineEnding {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Lf => "\n",
+            Self::CrLf => "\r\n",
+        }
+    }
+}
+
+pub fn validate_document(source: &str) -> Result<(), AsonError> {
+    shape(&ason::de_value_from_str(source)?)?;
+    Ok(())
 }
 
 /// Formats one complete ASON document with four spaces per nesting level.
@@ -75,7 +110,7 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 /// * `source` - UTF-8 text containing exactly one ASON value. Comments are allowed;
 ///   an empty document or a document containing only comments is not a value.
 /// * `options` - Layout settings borrowed for this call. `indent_width` controls
-///   spaces per nesting level; zero keeps line breaks without indentation.
+///   spaces per nesting level or the visual width of tabs when using tab indentation.
 ///
 /// The formatter copies each literal and comment from the original source rather
 /// than serializing parsed values. Numeric bases, escape sequences, raw-string
@@ -94,14 +129,15 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 /// ```
 /// use ason_format::{FormatOptions, format_with_options};
 ///
-/// let options = FormatOptions { indent_width: 2 };
+/// let options = FormatOptions {
+///     indent_width: 2,
+///     ..FormatOptions::default()
+/// };
 /// assert_eq!(format_with_options("[1,2]", &options)?, "[1 2]\n");
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<String, AsonError> {
-    // Validate before laying out tokens. Parsing alone does not establish all of
-    // the recursive type relationships needed for homogeneous collections.
-    shape(&ason::de_value_from_str(source)?)?;
+    validate_document(source)?;
     let tokens: Vec<_> = tokenize(source)?
         .into_iter()
         .filter(|token| !matches!(token.kind, SyntaxKind::Whitespace | SyntaxKind::Comma))
@@ -131,6 +167,8 @@ pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<Stri
     let mut writer = Writer {
         output: String::new(),
         indent_width: options.indent_width,
+        indent_style: options.indent_style,
+        line_ending: options.line_ending,
     };
     let mut previous: Option<&SyntaxToken> = None;
     let mut depth = 0;
@@ -184,7 +222,7 @@ pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<Stri
         }
         previous = Some(token);
     }
-    writer.output.push('\n');
+    writer.output.push_str(options.line_ending.as_str());
     Ok(writer.output)
 }
 
@@ -558,6 +596,8 @@ struct Writer {
     output: String,
     /// Spaces per nesting level, copied from the caller's format options.
     indent_width: usize,
+    indent_style: IndentStyle,
+    line_ending: LineEnding,
 }
 
 impl Writer {
@@ -569,7 +609,7 @@ impl Writer {
     fn write(&mut self, text: &str, gap: Gap, depth: usize) -> Result<(), AsonError> {
         if !self.output.is_empty() {
             match gap {
-                Gap::Line => self.output.push('\n'),
+                Gap::Line => self.output.push_str(self.line_ending.as_str()),
                 Gap::Space => self.output.push(' '),
                 Gap::None => {}
             }
@@ -578,12 +618,21 @@ impl Writer {
             // Both the multiplication and the capacity request can fail for a
             // very large user-supplied width. Turn either case into a diagnostic.
             let count = depth
-                .checked_mul(self.indent_width)
+                .checked_mul(if self.indent_style == IndentStyle::Tabs {
+                    1
+                } else {
+                    self.indent_width
+                })
                 .ok_or_else(|| AsonError::Message("Indentation is too large.".into()))?;
             self.output
                 .try_reserve(count)
                 .map_err(|_| AsonError::Message("Indentation is too large.".into()))?;
-            self.output.extend(std::iter::repeat_n(' ', count));
+            let character = if self.indent_style == IndentStyle::Tabs {
+                '\t'
+            } else {
+                ' '
+            };
+            self.output.extend(std::iter::repeat_n(character, count));
         }
         self.output.push_str(text);
         Ok(())
@@ -694,18 +743,98 @@ mod tests {
     /// Confirms compact values and custom indentation for values wider than 80.
     fn custom_indent() {
         assert_eq!(
-            format_with_options("[1 2]", &FormatOptions { indent_width: 2 }).unwrap(),
+            format_with_options(
+                "[1 2]",
+                &FormatOptions {
+                    indent_width: 2,
+                    ..FormatOptions::default()
+                }
+            )
+            .unwrap(),
             "[1 2]\n"
         );
         let item = "a".repeat(39);
         let source = format!("[\"{item}\" \"{item}\"]");
         assert_eq!(
-            format_with_options(&source, &FormatOptions { indent_width: 2 }).unwrap(),
+            format_with_options(
+                &source,
+                &FormatOptions {
+                    indent_width: 2,
+                    ..FormatOptions::default()
+                }
+            )
+            .unwrap(),
             format!("[\n  \"{item}\"\n  \"{item}\"\n]\n")
         );
         assert_eq!(
-            format_with_options(&source, &FormatOptions { indent_width: 0 }).unwrap(),
+            format_with_options(
+                &source,
+                &FormatOptions {
+                    indent_width: 0,
+                    ..FormatOptions::default()
+                }
+            )
+            .unwrap(),
             format!("[\n\"{item}\"\n\"{item}\"\n]\n")
+        );
+    }
+
+    #[test]
+    fn editor_layout_preserves_tokens() {
+        let source = "{a: \"one\n two\", /* line\r\n body */ b: r#\"raw\r\n text\"#}";
+        for indent_style in [IndentStyle::Spaces, IndentStyle::Tabs] {
+            for line_ending in [LineEnding::Lf, LineEnding::CrLf] {
+                let options = FormatOptions {
+                    indent_width: 2,
+                    indent_style,
+                    line_ending,
+                };
+                let output = format_with_options(source, &options).unwrap();
+                assert_eq!(preserved(source), preserved(&output));
+                assert_eq!(format_with_options(&output, &options).unwrap(), output);
+                assert!(output.ends_with(line_ending.as_str()));
+                let indentation = if indent_style == IndentStyle::Tabs {
+                    "\t"
+                } else {
+                    "  "
+                };
+                assert!(output.contains(&format!("{}{indentation}a:", line_ending.as_str())));
+            }
+        }
+        assert_eq!(
+            format(source).unwrap(),
+            format_with_options(source, &FormatOptions::default()).unwrap()
+        );
+        for source in ["[", "[1 true]", "{a:1 a:2}", "", "256_u8"] {
+            assert_eq!(
+                validate_document(source).unwrap_err(),
+                format(source).unwrap_err()
+            );
+        }
+    }
+
+    #[test]
+    fn tab_width_controls_line_fitting() {
+        let item = "x".repeat(69);
+        let source = format!("{{// root\na: [\"{item}\"]}}");
+        let narrow = FormatOptions {
+            indent_width: 2,
+            indent_style: IndentStyle::Tabs,
+            ..FormatOptions::default()
+        };
+        let wide = FormatOptions {
+            indent_width: 8,
+            ..narrow
+        };
+        assert!(
+            format_with_options(&source, &narrow)
+                .unwrap()
+                .contains(&format!("\ta: [\"{item}\"]"))
+        );
+        assert!(
+            format_with_options(&source, &wide)
+                .unwrap()
+                .contains("\ta: [\n\t\t")
         );
     }
 

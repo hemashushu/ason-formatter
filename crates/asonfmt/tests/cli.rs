@@ -90,6 +90,8 @@ fn executable_name() {
     assert!(help.contains("--replace"));
     assert!(help.contains("--replace-atomic"));
     assert!(help.contains("-c, --color <COLOR>"));
+    assert!(help.contains("--indent-style <INDENT_STYLE>"));
+    assert!(help.contains("--line-ending <LINE_ENDING>"));
     assert!(help.contains("--complete <SHELL>"));
     assert!(help.contains("PowerShell"));
     let version = command().arg("--version").output().unwrap();
@@ -108,6 +110,19 @@ fn stdin_stdout_and_color() {
     assert!(output.stderr.is_empty());
     let output = stdin(&["--indent-width", "2"], b"[1 2]");
     assert_eq!(output.stdout, b"[1 2]\n");
+    let output = stdin(
+        &[
+            "--indent-style",
+            "tabs",
+            "--indent-width",
+            "2",
+            "--line-ending",
+            "crlf",
+        ],
+        b"{/* comment */a:1}",
+    );
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert_eq!(output.stdout, b"{\r\n\t/* comment */\r\n\ta: 1\r\n}\r\n");
     let output = stdin(&["--color", "always"], b"1");
     assert!(output.status.success());
     assert!(output.stdout.contains(&0x1b));
