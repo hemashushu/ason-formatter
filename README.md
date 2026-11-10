@@ -1,283 +1,168 @@
 # ASON Formatter
 
-Source-preserving formatting and syntax highlighting for [ASON](https://github.com/hemashushu/ason).
-
-This repository provides the `ason-format` Rust library and the `asonfmt` command-line tool.
+ASON Formatter provides three ways to work with [ASON](https://github.com/hemashushu/ason): the `asonfmt` command-line tool, the `ason-format` Rust library, and the `@hemashushu/ason-format-wasm` npm package.
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=2 depthTo=4 orderedList=false} -->
 
 <!-- code_chunk_output -->
 
-- [1 Features](#1-features)
-- [2 Using the `asonfmt` CLI](#2-using-the-asonfmt-cli)
-- [3 Using the `ason-format` Library](#3-using-the-ason-format-library)
-  - [3.1 Formatting](#31-formatting)
-  - [3.2 Highlighting](#32-highlighting)
-  - [3.3 WASM](#33-wasm)
-- [4 Links](#4-links)
-- [5 License](#5-license)
+- [Install](#install)
+- [Format from the command line](#format-from-the-command-line)
+- [What formatting changes](#what-formatting-changes)
+- [Use the Rust library](#use-the-rust-library)
+- [Highlight ASON in Rust](#highlight-ason-in-rust)
+- [Use the WebAssembly package](#use-the-webassembly-package)
+- [Build and publish the WebAssembly package](#build-and-publish-the-webassembly-package)
+- [More information](#more-information)
+- [License](#license)
 
 <!-- /code_chunk_output -->
 
-## 1 Features
 
-- Source-preserving formatting for ASON documents.
-- Syntax highlighting with ANSI and HTML output.
-- Configurable indentation and layout options.
-- Validation of collection type consistency.
+## Install
 
-## 2 Using the `asonfmt` CLI
-
-Install the `asonfmt` CLI with Cargo by running
+Install the command-line tool with Cargo:
 
 ```sh
 cargo install asonfmt
 ```
 
-To install it from a local clone of the repository, run
+Or install the prebuilt WebAssembly package from npm:
 
 ```sh
-cargo install --path crates/asonfmt
+npm install --save-exact @hemashushu/ason-format-wasm@1.1.1
 ```
 
-Alternatively, build from source with `cargo build -p asonfmt` and the result binary will be located in `target/debug/asonfmt`.
+## Format from the command line
 
-```text
-NAME
-    asonfmt - Source-preserving formatting and syntax highlighting for ASON documents
+`asonfmt` reads a file or standard input and writes the result to standard output:
 
-USAGE
-    asonfmt [OPTIONS] [INPUT]
-
-ARGUMENTS
-    INPUT                   Input file (defaults to standard input when omitted)
-
-OPTIONS
-    -r, --replace             Overwrite the input file with formatted output
-        --replace-atomic      Use atomic replacement when overwriting the input file
-    -o, --output OUTPUT       Write output to this file (defaults to standard output when omitted)
-    -c, --color COLOR         Set color mode (auto, always, never)
-        --indent-width WIDTH  Spaces per level; with tabs, visual columns per tab for line fitting (default: 4)
-        --indent-style STYLE  Indentation style: spaces, tabs (default: spaces)
-        --line-ending ENDING  Structural line ending: lf, crlf (default: lf)
-        --complete SHELL      Print a completion script to standard output
-                              Supported shells: bash, zsh, fish, PowerShell
-    -h, --help                Show help information
-    -V, --version             Show version information
-
-EXIT STATUS
-    0   Successful formatting
-    1   Invalid arguments
-    2   Document error and failed formatting
-    3   I/O errors
-
-DESCRIPTION
-    `INPUT` is optional; if omitted, input is read from stdin. A path named `-`
-    is treated as a file. `-o/--output FILE` is also optional and defaults to
-    stdout when omitted; an output path named `-` is treated as a file.
-
-    The `--color` option accepts `auto`, `always`, or `never` and defaults to `auto`.
-    Automatic color is enabled only when stdout is a terminal, `NO_COLOR` is
-    unset, and `TERM` is not `dumb`. Explicit `always` or `never` overrides
-    these environment settings, but output files are never colored.
-
-    The `-r/--replace` option replaces the input file with formatted output.
-    By default, replacement is not atomic, so a write failure can leave a
-    partially written file. Use `--replace-atomic` for safer in-place updates.
-
-    With `--indent-style tabs`, the formatter emits one tab per nesting level.
-    `--indent-width` then sets how many visual columns each tab occupies when
-    fitting lines; it does not set the number of tabs. A width of zero still
-    emits tabs, but counts them as zero columns for line fitting. With spaces,
-    the width is the number of spaces per level, and zero emits no indentation.
-
-    `--line-ending` controls generated structural breaks; line endings inside
-    literals and comments are preserved as written.
-
-    Exit status 0 also applies to help, version, and completion-script output.
-    A broken output pipe is treated as normal pipeline termination and returns
-    status 0. Non-UTF-8 input is treated as a document error and returns status 2.
-
-EXAMPLES
-    * stdin to stdout; colors are automatic when stdout is a terminal
-      printf '{answer: 42}' | asonfmt
-
-    * File to stdout; colors are automatic when stdout is a terminal
-      asonfmt input.ason
-
-    * File to file; no color applied
-      asonfmt input.ason -o output.ason
-
-    * Piped input with tabs and CRLF structural line endings
-      cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf
+```sh
+asonfmt input.ason
+cat input.ason | asonfmt
 ```
 
-## 3 Using the `ason-format` Library
+Write to another file or replace the input file:
 
-Add the following to your `Cargo.toml`:
+```sh
+asonfmt input.ason --output formatted.ason
+asonfmt input.ason --replace-atomic
+```
+
+Common options:
+
+- `--indent-width 2` uses two spaces per level. With `--indent-style tabs`, it sets the visual width of each tab for line fitting; the formatter still emits one tab per level.
+- `--line-ending crlf` uses CRLF for generated line breaks. The default is LF.
+- `--color auto|always|never` controls terminal colors. `auto` is the default; output files are never colored.
+- `--help` lists all options.
+
+For detailed command-line documentation, see [`crates/asonfmt/docs/asonfmt.txt`](crates/asonfmt/docs/asonfmt.txt).
+
+The tool returns `0` on success, `1` for invalid arguments, `2` for invalid documents, and `3` for input/output errors. A broken output pipe is treated as normal pipeline termination.
+
+## What formatting changes
+
+The formatter checks that the input contains exactly one root value, then lays it out consistently. Nonempty containers and enumeration payloads stay on one line when they fit within 80 columns; otherwise, they use multiple lines. Empty lists and objects stay compact unless they contain comments. A space follows each colon, optional commas and extra blank lines are removed, and the output ends with a newline.
+
+By default, indentation is four spaces and generated line breaks use LF. You can choose tabs or CRLF instead. With tabs, `indent_width` controls how wide a tab counts when deciding whether content fits on one line; it does not control how many tab characters are emitted. A width of zero still emits indentation.
+
+Formatting preserves literal spelling and comment text, including escapes, numeric bases, raw-string delimiters, and line endings inside literals and comments. Multiline literals and comments keep their original internal indentation. Comments stay in their original order; line comments end their line.
+
+The formatter also checks that values in collections have compatible types, including nested collections. Missing object fields and empty collections are allowed when other values provide enough type information. The formatter cannot check application-specific defaults or the full definition of an enumeration without an application schema.
+
+## Use the Rust library
+
+Add the crate to `Cargo.toml`:
 
 ```toml
 [dependencies]
 ason-format = "1.1"
 ```
 
-### 3.1 Formatting
+Format a document with the defaults or set options explicitly:
 
 ```rust
-use ason_format::{FormatOptions, format, format_with_options};
+use ason_format::{format, format_with_options, FormatOptions};
 
-fn main() -> Result<(), ason_format::AsonError> {
-  let source = r#"{name: "Alice", values: [0xff, 0b10]}"#;
-  let formatted = format(source)?;
-  let two_spaces = format_with_options(source, &FormatOptions {
+let source = r#"{name: "Alice", values: [0xff, 0b10]}"#;
+let formatted = format(source)?;
+let compact_indent = format_with_options(source, &FormatOptions {
     indent_width: 2,
     ..FormatOptions::default()
-  })?;
-  println!("{formatted}");
-  println!("{two_spaces}");
-  Ok(())
-}
-```
-
-Default output:
-
-```text
-{name: "Alice" values: [0xff 0b10]}
-```
-
-Formatting validates that the input contains exactly one root value before applying these rules:
-
-- Four spaces per level by default; zero indentation still emits line breaks.
-- Nonempty containers and enumeration payloads without comments or multiline
-  literals stay on one line when the formatted line, including indentation, fits
-  within 80 characters; otherwise, they span multiple lines. For example,
-  `[1 2 3]` stays on one line.
-- Empty `[]` and `{}` stay compact unless they contain comments; empty tuples are invalid.
-- One space follows a colon. Optional commas and extra blank lines are removed.
-- Generated line breaks use LF, and the document ends with one layout newline.
-- Literal spelling and comment bodies are copied byte for byte, including escapes,
-  numeric bases and suffixes, raw delimiters, and internal whitespace or CRLF.
-- Multi-line literals and comments are not reindented internally. Their original
-  indentation may therefore differ from the surrounding generated layout.
-- Comment order is preserved; same-line trailing comments remain trailing,
-  standalone comments remain on separate lines, and line comments force a newline.
-
-The formatter checks collection type consistency, including nested collections.
-Missing object fields and empty collections remain compatible with types inferred
-from other elements. Target-specific defaults and the complete definitions of
-enumeration types cannot be validated without an application schema.
-
-`FormatOptions` also controls structural indentation and line endings. By
-default it uses four spaces and LF. With `IndentStyle::Tabs`, the formatter
-emits one tab per nesting level; `indent_width` sets how many visual columns
-each tab occupies when deciding whether a container fits on one line, not how
-many tab characters are emitted. A width of zero still emits one tab per level
-but counts each tab as zero columns for line fitting:
-
-```rust
-use ason_format::{FormatOptions, IndentStyle, LineEnding, format_with_options};
-
-let options = FormatOptions {
-  indent_width: 4,
-  indent_style: IndentStyle::Tabs,
-  line_ending: LineEnding::CrLf,
-};
-let formatted = format_with_options("{answer:42}", &options)?;
+})?;
 # Ok::<(), ason_format::AsonError>(())
 ```
 
-### 3.2 Highlighting
+`format` and `format_with_options` return an error for invalid input. See the [API documentation on docs.rs](https://docs.rs/ason-format/1.1.1/ason_format/) for the full reference.
+
+## Highlight ASON in Rust
+
+The library can return token ranges, ANSI-colored text, or escaped HTML:
 
 ```rust
-use ason_format::{highlight_spans, highlight_ansi, highlight_html};
+use ason_format::{highlight_ansi, highlight_html, highlight_spans};
 
-fn main() -> Result<(), ason_format::AsonError> {
-  let source = "{count: 0xff} // unchanged source\n";
-  let spans = highlight_spans(source)?;
-  let terminal_text = highlight_ansi(source)?;
-  let html = highlight_html(source)?;
-  println!("{spans:?}");
-  println!("{terminal_text}");
-  println!("{html}");
-  Ok(())
-}
+let source = "{count: 0xff}";
+let spans = highlight_spans(source)?;
+let terminal_text = highlight_ansi(source)?;
+let html = highlight_html(source)?;
+# Ok::<(), ason_format::AsonError>(())
 ```
 
-- `highlight_spans` returns ordered `HighlightSpan { kind, span }` values. Each
-  `span` is a half-open UTF-8 byte range (`[start..end)`) in the input; whitespace
-  is omitted.
-- `highlight_ansi` inserts SGR colors and resets without formatting the source.
-  It does not detect terminals or sanitize existing input control characters;
-  take care when displaying untrusted documents in a terminal.
-- `highlight_html` returns `<pre class="ason"><code>...</code></pre>` with escaped
-  source text and fixed token classes. It does not include CSS or JavaScript.
-- Highlighting requires valid lexical tokens, not a complete document structure.
-  Unterminated strings and comments return errors; incremental error recovery is
-  not implemented. Empty or whitespace-only input can be highlighted.
+Token ranges are half-open UTF-8 byte ranges, and whitespace is not included. HTML output is wrapped in `<pre class="ason"><code>...</code></pre>` and escapes the source text; it does not include CSS. ANSI output does not detect terminals or sanitize control characters in the input. Highlighting needs valid tokens, but not a complete document; unterminated strings and comments return errors.
 
-Stable HTML classes: `ason-number`, `ason-boolean`, `ason-char`, `ason-string`,
-`ason-datetime`, `ason-bytes`, `ason-identifier`, `ason-enumeration`, `ason-comment`,
-and `ason-punctuation`. `HighlightKind::css_class()` returns these names.
+HTML token classes are `ason-number`, `ason-boolean`, `ason-char`, `ason-string`, `ason-datetime`, `ason-bytes`, `ason-identifier`, `ason-enumeration`, `ason-comment`, and `ason-punctuation`. `HighlightKind::css_class()` returns the class for each token kind.
 
-Example stylesheet:
+## Use the WebAssembly package
 
-```css
-.ason { color: #24292f; background: #f6f8fa; white-space: pre; }
-.ason-number, .ason-boolean { color: #0550ae; }
-.ason-string, .ason-char { color: #116329; }
-.ason-datetime, .ason-bytes { color: #953800; }
-.ason-identifier { color: #8250df; }
-.ason-enumeration { color: #9a6700; }
-.ason-comment { color: #57606a; }
-.ason-punctuation { color: #24292f; }
+The npm package includes prebuilt WebAssembly, JavaScript bindings, TypeScript declarations, build information, and dependency license notices. Applications using it do not need Rust or a local copy of this repository. It has no npm runtime dependencies.
+
+In Node.js, initialize the package with its matching `.wasm` file:
+
+```js
+import { readFile } from 'node:fs/promises';
+import init, { formatDocument, validateDocument } from '@hemashushu/ason-format-wasm';
+
+const wasm = await readFile(new URL(import.meta.resolve('@hemashushu/ason-format-wasm/ason_bg.wasm')));
+await init({ module_or_path: wasm });
+
+const formatted = JSON.parse(formatDocument('{answer:42}', 4, true, false));
+const validation = JSON.parse(validateDocument('{answer:42}'));
 ```
 
-### 3.3 WASM
+`formatDocument(source, tabSize, insertSpaces, crlf)` formats a document. `tabSize` sets the indentation width, `insertSpaces` selects spaces rather than tabs, and `crlf` selects CRLF rather than LF for generated line breaks. With tabs, one tab is emitted per level and `tabSize` is used for line fitting. `validateDocument(source)` checks a document without formatting it.
 
-`ason-format-wasm` is a private workspace crate that exposes the formatter and
-document validator to browser and VS Code integrations through
-[`wasm-bindgen`](https://github.com/rustwasm/wasm-bindgen). It uses the same
-validation and layout behavior as the Rust library. The crate is not published
-separately to crates.io.
+Both functions return a JSON string. Successful formatting returns a `success` status and the formatted text; successful validation returns a `success` status with `text: null`. Errors include a message, a kind (`syntax`, `eof`, or `document`), and, when available, a source range. Range offsets are UTF-16 offsets with an exclusive end.
 
-To build the WebAssembly module and generate browser bindings from the repository
-root, install the target and the matching `wasm-bindgen-cli` version, then run:
+For browsers, configure your bundler to include `ason_bg.wasm` and pass its URL, bytes, or compiled `WebAssembly.Module` to `init`. Keep the JavaScript bindings and WebAssembly file on the same package version.
+
+## Build and publish the WebAssembly package
+
+This section is for maintainers. Building the npm package requires Node.js 24 or later, Rust (tested with 1.99.1), the `wasm32-unknown-unknown` target, and `wasm-bindgen-cli` 0.2.130:
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked
-cargo build -p ason-format-wasm --target wasm32-unknown-unknown --release --locked
-wasm-bindgen target/wasm32-unknown-unknown/release/ason_format_wasm.wasm \
-  --target web --out-dir pkg
+npm ci
+npm run build
+npm test
+npm pack
 ```
 
-The generated Web module exports `formatDocument(source, tabSize, insertSpaces,
-crlf)` and `validateDocument(source)`. `formatDocument` returns a JSON string;
-`tabSize` is the indentation width, `insertSpaces` selects spaces instead of
-tabs, and `crlf` selects CRLF instead of LF for generated structural line
-breaks. With tabs, one tab is emitted per nesting level and `tabSize` is its
-visual width for line fitting. `validateDocument` validates without formatting.
+The build checks that the npm and Rust package versions match, then writes generated files to `pkg/`. Tests exercise the WebAssembly API and verify that the packed npm package works without Rust sources. `npm pack` runs the build and tests before creating the archive. The Rust `ason-format-wasm` crate is an internal build component and is not published to crates.io.
 
-```js
-import init, { formatDocument, validateDocument } from "./pkg/ason_format_wasm.js";
+On Windows, install Visual Studio's **Desktop development with C++** workload and **C++ Clang tools for Windows**, then run the Cargo installation from **Developer PowerShell for VS**. Make sure Cargo's binary directory is on `PATH` if `wasm-bindgen` is not found.
 
-await init();
-const result = JSON.parse(formatDocument("{answer:42}", 4, true, false));
-const validation = JSON.parse(validateDocument("{answer:42}"));
-```
+The repository's **Rust** workflow builds and tests the package on Linux, macOS, and Windows. The manual **Publish WASM to npm** workflow publishes a tested archive using npm trusted publishing. Before the first release, the package owner must publish the tested archive with `npm publish <archive.tgz> --access public`, then configure `hemashushu/ason-formatter` and `publish-wasm.yml` as the package's trusted publisher on npm. For later releases, update the npm and Rust crate versions together; published versions cannot be overwritten.
 
-Successful formatting returns `{"status":"success","text":"..."}`;
-successful validation returns `{"status":"success","text":null}`. Failures
-return `{"status":"error","error":{"message":"...","kind":"syntax","start":0,"end":1}}`.
-`kind` is `syntax`, `eof`, or `document`. `start` and `end` are UTF-16 offsets
-with an exclusive end; they are `null` when an error has no source range, such
-as a collection type mismatch.
+If the npm package is not yet available, consumers can use the `.tgz` created by `npm pack`. Keep the archive in the consuming project and reference it with a `file:` dependency and npm lockfile.
 
-## 4 Links
+## More information
 
-- [ASON Specification](https://github.com/hemashushu/ason/blob/main/docs/specification.md)
+- [ASON specification](https://github.com/hemashushu/ason/blob/main/docs/specification.md)
 - [ASON Converter](https://github.com/hemashushu/ason-converter)
+- [Contributing guide](CONTRIBUTING)
 
-## 5 License
+## License
 
-This project is licensed under the MPL 2.0 License with additional terms. See [LICENSE](./LICENSE) and [LICENSE.additional](./LICENSE.additional).
+This project is distributed under the Mozilla Public License 2.0 with additional terms. See [LICENSE](LICENSE) and [LICENSE.additional](LICENSE.additional).

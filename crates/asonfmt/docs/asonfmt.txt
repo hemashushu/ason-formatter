@@ -1,0 +1,67 @@
+NAME
+    asonfmt - Source-preserving formatting and syntax highlighting for ASON documents
+
+USAGE
+    asonfmt [OPTIONS] [INPUT]
+
+ARGUMENTS
+    INPUT                     Input file (defaults to standard input when omitted)
+
+OPTIONS
+    -r, --replace             Overwrite the input file with formatted output
+        --replace-atomic      Use atomic replacement when overwriting the input file
+    -o, --output OUTPUT       Write output to this file (defaults to standard output when omitted)
+    -c, --color COLOR         Set color mode (auto, always, never)
+        --indent-width WIDTH  Spaces per level; with tabs, visual columns per tab for line fitting (default: 4)
+        --indent-style STYLE  Indentation style: spaces, tabs (default: spaces)
+        --line-ending ENDING  Structural line ending: lf, crlf (default: lf)
+        --complete SHELL      Print a completion script to standard output
+                              Supported shells: bash, zsh, fish, PowerShell
+    -h, --help                Show help information
+    -V, --version             Show version information
+
+EXIT STATUS
+    0   Successful formatting
+    1   Invalid arguments
+    2   Document error and failed formatting
+    3   I/O errors
+
+DESCRIPTION
+    `INPUT` is optional; if omitted, input is read from stdin. A path named `-`
+    is treated as a file. `-o/--output FILE` is also optional and defaults to
+    stdout when omitted; an output path named `-` is treated as a file.
+
+    The `--color` option accepts `auto`, `always`, or `never` and defaults to `auto`.
+    Automatic color is enabled only when stdout is a terminal, `NO_COLOR` is
+    unset, and `TERM` is not `dumb`. Explicit `always` or `never` overrides
+    these environment settings, but output files are never colored.
+
+    The `-r/--replace` option replaces the input file with formatted output.
+    By default, replacement is not atomic, so a write failure can leave a
+    partially written file. Use `--replace-atomic` for safer in-place updates.
+
+    With `--indent-style tabs`, the formatter emits one tab per nesting level.
+    `--indent-width` then sets how many visual columns each tab occupies when
+    fitting lines; it does not set the number of tabs. A width of zero still
+    emits tabs, but counts them as zero columns for line fitting. With spaces,
+    the width is the number of spaces per level, and zero emits no indentation.
+
+    `--line-ending` controls generated structural breaks; line endings inside
+    literals and comments are preserved as written.
+
+    Exit status 0 also applies to help, version, and completion-script output.
+    A broken output pipe is treated as normal pipeline termination and returns
+    status 0. Non-UTF-8 input is treated as a document error and returns status 2.
+
+EXAMPLES
+    * stdin to stdout; colors are automatic when stdout is a terminal
+      printf '{answer: 42}' | asonfmt
+
+    * File to stdout; colors are automatic when stdout is a terminal
+      asonfmt input.ason
+
+    * File to file; no color applied
+      asonfmt input.ason -o output.ason
+
+    * Piped input with tabs and CRLF structural line endings
+      cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf

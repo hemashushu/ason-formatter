@@ -1,0 +1,40 @@
+{
+  "name": "@hemashushu/ason-format-wasm",
+  "version": "1.1.1",
+  "description": "Source-preserving ASON formatting and validation for browsers, workers and Node.js.",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE.additional",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hemashushu/ason-formatter"
+  },
+  "exports": {
+    ".": {
+      "types": "./pkg/ason.d.ts",
+      "import": "./pkg/ason.js"
+    },
+    "./ason_bg.wasm": "./pkg/ason_bg.wasm",
+    "./build-info.json": "./pkg/build-info.json",
+    "./THIRD_PARTY_NOTICES.md": "./THIRD_PARTY_NOTICES.md",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "pkg/ason.js",
+    "pkg/ason.d.ts",
+    "pkg/ason_bg.wasm",
+    "pkg/ason_bg.wasm.d.ts",
+    "pkg/build-info.json",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE",
+    "LICENSE.additional",
+    "CONTRIBUTING"
+  ],
+  "scripts": {
+    "build": "node scripts/build-wasm.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepack": "npm run build && npm test"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

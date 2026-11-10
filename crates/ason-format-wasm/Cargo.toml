@@ -3,7 +3,6 @@ name = "ason-format-wasm"
 version = "1.1.1"
 edition = "2024"
 publish = false
-license-file = "../../LICENSE.additional"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -20,3 +20,8 @@ build/
 
 *.macho
 *.dylib
+
+node_modules/
+pkg/
+*.tgz
+/THIRD_PARTY_NOTICES.md
