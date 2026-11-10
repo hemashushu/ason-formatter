@@ -245,13 +245,15 @@ fn rejects_aliases_without_truncating() {
     fs::hard_link(&input, &hard).unwrap();
     // Hard links share file identity even though their canonical paths differ.
     // Unix also lets us check the symlink case without platform-specific setup.
-    let mut aliases = vec![input.clone(), hard];
+    let aliases = vec![input.clone(), hard];
     #[cfg(unix)]
-    {
+    let aliases = {
+        let mut aliases = aliases;
         let link = temp.file("link.ason");
         std::os::unix::fs::symlink(&input, &link).unwrap();
         aliases.push(link);
-    }
+        aliases
+    };
     for output in aliases {
         let result = command()
             .arg(&input)

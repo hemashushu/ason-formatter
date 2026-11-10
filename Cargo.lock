@@ -75,14 +75,14 @@ dependencies = [
 
 [[package]]
 name = "ason-format"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "ason",
 ]
 
 [[package]]
 name = "ason-format-wasm"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "ason-format",
  "serde",
@@ -92,11 +92,12 @@ dependencies = [
 
 [[package]]
 name = "asonfmt"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "ason-format",
  "clap",
  "clap_complete",
+ "same-file",
  "tempfile",
 ]
 
@@ -419,6 +420,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
+name = "same-file"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
+dependencies = [
+ "winapi-util",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -578,6 +588,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "winapi-util"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
+dependencies = [
+ "windows-sys",
 ]
 
 [[package]]

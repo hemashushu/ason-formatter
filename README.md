@@ -86,6 +86,10 @@ DESCRIPTION
     `--line-ending` controls generated structural breaks; line endings inside
     literals and comments are preserved as written.
 
+    Exit status 0 also applies to help, version, and completion-script output.
+    A broken output pipe is treated as normal pipeline termination and returns
+    status 0. Non-UTF-8 input is treated as a document error and returns status 2.
+
 EXAMPLES
     * stdin to stdout; colors are automatic when stdout is a terminal
     printf '{answer: 42}' | asonfmt

@@ -11,7 +11,7 @@
 //! output. Input and output aliases are rejected rather than formatted in place.
 
 use std::{
-    fs::{self, File, Metadata, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::ExitCode,
@@ -171,29 +171,6 @@ fn invalid(error: impl std::fmt::Display, label: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, format!("{label}: {error}"))
 }
 
-/// Checks whether the opened input and output appear to identify the same file.
-///
-/// `input` and `output` describe the opened handles. On Unix, device and inode
-/// identify the underlying file even through hard links or symlinks. Elsewhere,
-/// `input_path` and `output_path` are canonicalized as a best-effort fallback;
-/// failed canonicalization returns false, and hard-link aliases may go undetected.
-fn same_file(input: &Metadata, output: &Metadata, input_path: &Path, output_path: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let _ = (input_path, output_path);
-        input.dev() == output.dev() && input.ino() == output.ino()
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (input, output);
-        match (input_path.canonicalize(), output_path.canonicalize()) {
-            (Ok(input), Ok(output)) => input == output,
-            _ => false,
-        }
-    }
-}
-
 /// Replaces an existing file by renaming a fully written sibling temporary file.
 fn atomic_replace(path: &Path, contents: &[u8]) -> io::Result<()> {
     let target = path.canonicalize()?;
@@ -245,17 +222,12 @@ fn run(args: Args) -> io::Result<()> {
         "stdin".into()
     };
     let mut source = String::new();
-    let input_metadata = if is_file(input_path) {
+    let input_file = if is_file(input_path) {
         let mut file =
             File::open(input_path.unwrap()).map_err(|error| contextual(error, &input_label))?;
-        // Inspect the same handle we read, rather than looking the path up again.
-        // Its identity is needed later to reject output aliases before truncation.
-        let metadata = file
-            .metadata()
-            .map_err(|error| contextual(error, &input_label))?;
         file.read_to_string(&mut source)
             .map_err(|error| contextual(error, &input_label))?;
-        Some(metadata)
+        Some(file)
     } else {
         io::stdin()
             .lock()
@@ -275,9 +247,11 @@ fn run(args: Args) -> io::Result<()> {
     .map_err(|error| invalid(error, &input_label))?;
     let output_path = args.output.as_deref();
     if args.replace_atomic {
+        drop(input_file);
         atomic_replace(input_path.unwrap(), formatted.as_bytes())
             .map_err(|error| contextual(error, &input_label))?;
     } else if args.replace {
+        drop(input_file);
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
@@ -296,9 +270,15 @@ fn run(args: Args) -> io::Result<()> {
             .truncate(false)
             .open(path)
             .map_err(|error| contextual(error, &label))?;
-        if let Some(input_metadata) = input_metadata {
-            let output_metadata = file.metadata().map_err(|error| contextual(error, &label))?;
-            if same_file(&input_metadata, &output_metadata, input_path.unwrap(), path) {
+        if let Some(input_file) = input_file {
+            let input_handle = same_file::Handle::from_file(input_file)
+                .map_err(|error| contextual(error, &input_label))?;
+            let output_handle = same_file::Handle::from_file(
+                file.try_clone()
+                    .map_err(|error| contextual(error, &label))?,
+            )
+            .map_err(|error| contextual(error, &label))?;
+            if input_handle == output_handle {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "Input and output refer to the same file; in-place formatting is not supported.",
