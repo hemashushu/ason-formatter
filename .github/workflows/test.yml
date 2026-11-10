@@ -1,4 +1,4 @@
-name: Rust
+name: Rust and WASM CI
 
 on:
   push:
@@ -28,11 +28,7 @@ jobs:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   wasm:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
@@ -47,8 +43,3 @@ jobs:
     - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
     - run: npm run build
     - run: npm test
-    - run: npm pack --ignore-scripts
-    - uses: actions/upload-artifact@v4
-      with:
-        name: ason-format-wasm-${{ runner.os }}
-        path: '*.tgz'

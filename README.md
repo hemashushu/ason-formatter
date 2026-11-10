@@ -30,7 +30,7 @@ cargo install asonfmt
 Or install the prebuilt WebAssembly package from npm:
 
 ```sh
-npm install --save-exact @hemashushu/ason-format-wasm@1.1.1
+npm install --save-exact @hemashushu/ason-format-wasm@1.2.0
 ```
 
 ## Format from the command line
@@ -76,7 +76,7 @@ Add the crate to `Cargo.toml`:
 
 ```toml
 [dependencies]
-ason-format = "1.1"
+ason-format = "1.2.0"
 ```
 
 Format a document with the defaults or set options explicitly:
@@ -93,7 +93,7 @@ let compact_indent = format_with_options(source, &FormatOptions {
 # Ok::<(), ason_format::AsonError>(())
 ```
 
-`format` and `format_with_options` return an error for invalid input. See the [API documentation on docs.rs](https://docs.rs/ason-format/1.1.1/ason_format/) for the full reference.
+`format` and `format_with_options` return an error for invalid input. See the [API documentation on docs.rs](https://docs.rs/ason-format/1.2.0/ason_format/) for the full reference.
 
 ## Highlight ASON in Rust
 
@@ -153,7 +153,7 @@ The build checks that the npm and Rust package versions match, then writes gener
 
 On Windows, install Visual Studio's **Desktop development with C++** workload and **C++ Clang tools for Windows**, then run the Cargo installation from **Developer PowerShell for VS**. Make sure Cargo's binary directory is on `PATH` if `wasm-bindgen` is not found.
 
-The repository's **Rust** workflow builds and tests the package on Linux, macOS, and Windows. The manual **Publish WASM to npm** workflow publishes a tested archive using npm trusted publishing. Before the first release, the package owner must publish the tested archive with `npm publish <archive.tgz> --access public`, then configure `hemashushu/ason-formatter` and `publish-wasm.yml` as the package's trusted publisher on npm. For later releases, update the npm and Rust crate versions together; published versions cannot be overwritten.
+The **Rust** workflow checks and tests the package on Ubuntu. The manual **Publish WASM to npm** workflow rebuilds and tests the package on Ubuntu, then publishes it using npm trusted publishing. Before the first release, the package owner must publish the tested archive with `npm publish <archive.tgz> --access public`, then configure `hemashushu/ason-formatter` and `publish-wasm.yml` as the package's trusted publisher on npm. For later releases, update the npm and Rust crate versions together; published versions cannot be overwritten.
 
 If the npm package is not yet available, consumers can use the `.tgz` created by `npm pack`. Keep the archive in the consuming project and reference it with a `file:` dependency and npm lockfile.
 
