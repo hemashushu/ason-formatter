@@ -25,7 +25,22 @@ use clap::{CommandFactory, Parser, ValueEnum};
 #[command(
     name = "asonfmt",
     version,
-    about = "Source-preserving formatting and syntax highlighting for ASON documents"
+    author = "Hemashushu <hippospark@gmail.com>",
+    about = "Source-preserving formatting and syntax highlighting for ASON documents",
+    after_help = "\
+Examples:
+  * stdin to stdout; colors are automatic when stdout is a terminal
+    printf '{answer: 42}' | asonfmt
+
+  * File to stdout; colors are automatic when stdout is a terminal
+    asonfmt input.ason
+
+  * File to file; no color applied
+    asonfmt input.ason -o output.ason
+
+  * Piped input with tabs and CRLF structural line endings
+    cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf
+    "
 )]
 struct Args {
     /// Input file; defaults to standard input when omitted

@@ -28,11 +28,19 @@ This repository provides the `ason-format` Rust library and the `asonfmt` comman
 
 ## 2 Using the `asonfmt` CLI
 
-Install the `asonfmt` CLI with Cargo by running `cargo install asonfmt`. To
-install it from a local clone of the repository, run
-`cargo install --path crates/asonfmt`.
+Install the `asonfmt` CLI with Cargo by running
 
-Alternatively, build from source with `cargo build -p asonfmt`.
+```sh
+cargo install asonfmt
+```
+
+To install it from a local clone of the repository, run
+
+```sh
+cargo install --path crates/asonfmt
+```
+
+Alternatively, build from source with `cargo build -p asonfmt` and the result binary will be located in `target/debug/asonfmt`.
 
 ```text
 NAME
@@ -92,16 +100,16 @@ DESCRIPTION
 
 EXAMPLES
     * stdin to stdout; colors are automatic when stdout is a terminal
-    printf '{answer: 42}' | asonfmt
+      printf '{answer: 42}' | asonfmt
 
     * File to stdout; colors are automatic when stdout is a terminal
-    asonfmt input.ason
+      asonfmt input.ason
 
     * File to file; no color applied
-    asonfmt input.ason -o output.ason
+      asonfmt input.ason -o output.ason
 
     * Piped input with tabs and CRLF structural line endings
-    cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf
+      cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf
 ```
 
 ## 3 Using the `ason-format` Library
