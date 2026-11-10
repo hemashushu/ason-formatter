@@ -153,7 +153,7 @@ The build checks that the npm and Rust package versions match, then writes gener
 
 On Windows, install Visual Studio's **Desktop development with C++** workload and **C++ Clang tools for Windows**, then run the Cargo installation from **Developer PowerShell for VS**. Make sure Cargo's binary directory is on `PATH` if `wasm-bindgen` is not found.
 
-The **Rust** workflow checks and tests the package on Ubuntu. The manual **Publish WASM to npm** workflow rebuilds and tests the package on Ubuntu, then publishes it using npm trusted publishing. Before the first release, the package owner must publish the tested archive with `npm publish <archive.tgz> --access public`, then configure `hemashushu/ason-formatter` and `publish-wasm.yml` as the package's trusted publisher on npm. For later releases, update the npm and Rust crate versions together; published versions cannot be overwritten.
+The **Rust** workflow checks and tests the package on Ubuntu. The manual **Publish WASM to npm** workflow rebuilds and tests the package on Ubuntu, then stages it using npm trusted publishing. Configure `hemashushu/ason-formatter` and `publish-wasm.yml` as the package's trusted publisher on npm, with **npm stage publish** enabled under **Allowed actions**. After the workflow succeeds, a package maintainer must review and approve the staged version on npmjs.com or with `npm stage approve <stage-id>` using 2FA before it becomes available. For later releases, update the npm and Rust crate versions together; published versions cannot be overwritten.
 
 If the npm package is not yet available, consumers can use the `.tgz` created by `npm pack`. Keep the archive in the consuming project and reference it with a `file:` dependency and npm lockfile.
 
