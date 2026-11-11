@@ -1,4 +1,4 @@
-name: Publish WASM to npm
+name: Publish WASM to npmjs.com
 
 on:
   workflow_dispatch:

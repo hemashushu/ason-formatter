@@ -2,6 +2,12 @@
 name = "ason-format-wasm"
 version = "1.3.0"
 edition = "2024"
+description = "WebAssembly bindings for the ASON formatter and syntax highlighter"
+license-file = "LICENSE.additional"
+repository = "https://github.com/hemashushu/ason-formatter"
+documentation = "https://github.com/hemashushu/ason-formatter#use-the-webassembly-package"
+keywords = ["ason", "wasm", "formatter", "syntax-highlighting", "webassembly"]
+categories = ["wasm"]
 publish = false
 
 [lib]

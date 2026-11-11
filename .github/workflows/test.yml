@@ -1,4 +1,4 @@
-name: Rust and WASM CI
+name: Test Rust library and WASM
 
 on:
   push:
@@ -28,6 +28,7 @@ jobs:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   wasm:
+    needs: build
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
