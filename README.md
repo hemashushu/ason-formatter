@@ -161,7 +161,6 @@ If the npm package is not yet available, consumers can use the `.tgz` created by
 
 - [ASON specification](https://github.com/hemashushu/ason/blob/main/docs/specification.md)
 - [ASON Converter](https://github.com/hemashushu/ason-converter)
-- [Contributing guide](CONTRIBUTING)
 
 ## License
 

@@ -301,6 +301,17 @@ mod tests {
     }
 
     #[test]
+    fn abbreviated_enumerations_are_highlighted() {
+        let source = "Some(1) None Ok(true) Err(\"failed\")";
+        let spans = highlight_spans(source).unwrap();
+        for shorthand in ["Some", "None", "Ok", "Err"] {
+            assert!(spans.iter().any(|span| {
+                span.kind == HighlightKind::Enumeration && &source[span.span.clone()] == shorthand
+            }));
+        }
+    }
+
+    #[test]
     /// Removing the generated ANSI sequences must recover the exact input.
     fn ansi_round_trip() {
         let source = " // 中\r\n{key: r\"/*hi*/\", n: -1}\n";

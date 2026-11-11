@@ -692,6 +692,16 @@ mod tests {
         assert_eq!(check("[1 2 3]"), "[1 2 3]\n");
         assert_eq!(check("[1: true 2: false]"), "[1: true 2: false]\n");
         assert_eq!(check("Option::Some(1)"), "Option::Some(1)\n");
+        for source in [
+            "Some(Ok([11 13 17]))",
+            "Result::Ok(Some(11))",
+            "Err(\"failed\")",
+            "None",
+            "Option::Some(None)",
+            "Some({id: 123 name: \"Alice\"})",
+        ] {
+            assert_eq!(check(source), format!("{source}\n"));
+        }
         assert_eq!(
             check("Shape::Rect{width: 200 height: 100}"),
             "Shape::Rect{width: 200 height: 100}\n"
@@ -730,6 +740,10 @@ mod tests {
             "[1 true]",
             "()",
             "Option::Some()",
+            "{Some: 1}",
+            "{None: 1}",
+            "{Ok: 1}",
+            "{Err: 1}",
             "{a: 1 a: 2}",
             "256_u8",
             "[",
