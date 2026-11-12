@@ -89,7 +89,7 @@ Add the crate to `Cargo.toml`:
 
 ```toml
 [dependencies]
-ason-format = "1.2.0"
+ason-format = "1.4.0"  # Use the latest version of the crate
 ```
 
 Format a document with the defaults or set options explicitly:
@@ -106,7 +106,7 @@ let compact_indent = format_with_options(source, &FormatOptions {
 # Ok::<(), ason_format::AsonError>(())
 ```
 
-`format` and `format_with_options` return an error for invalid input. `validate_document(source)` runs the same checks without formatting. Errors whose location is known are `AsonError::MessageWithRange`, which includes the start and end line and column. See the [API documentation on docs.rs](https://docs.rs/ason-format/1.2.0/ason_format/) for the full reference.
+`format` and `format_with_options` return an error for invalid input. `validate_document(source)` runs the same checks without formatting. Errors whose location is known are `AsonError::MessageWithRange`, which includes the start and end line and column.
 
 ## Highlight ASON in Rust
 
