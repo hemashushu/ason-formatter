@@ -125,8 +125,22 @@ mod tests {
         assert_eq!(error["error"]["kind"], "syntax");
         let error: serde_json::Value =
             serde_json::from_str(&validate_document("[1 true]")).unwrap();
-        assert_eq!(error["error"]["kind"], "document");
-        assert!(error["error"]["start"].is_null());
+        assert_eq!(error["error"]["kind"], "syntax");
+        assert_eq!(error["error"]["start"], 3);
+        assert_eq!(error["error"]["end"], 7);
+        let source = "[😀::A(1), 😀::A(true)]";
+        let error: serde_json::Value = serde_json::from_str(&validate_document(source)).unwrap();
+        assert_eq!(
+            error["error"]["start"],
+            "[😀::A(1), ".encode_utf16().count()
+        );
+        assert_eq!(error["error"]["end"], source.encode_utf16().count() - 1);
+        let error: serde_json::Value =
+            serde_json::from_str(&validate_document("{a: None::B}")).unwrap();
+        assert_eq!(
+            (&error["error"]["start"], &error["error"]["end"]),
+            (&4.into(), &8.into())
+        );
         let error: serde_json::Value = serde_json::from_str(&validate_document("[😀::A")).unwrap();
         assert_eq!(error["error"]["kind"], "eof");
         assert_eq!(error["error"]["start"], 6);

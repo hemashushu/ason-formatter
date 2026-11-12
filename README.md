@@ -7,7 +7,7 @@ ASON Formatter provides three ways to work with [ASON](https://github.com/hemash
 <!-- code_chunk_output -->
 
 - [Install](#install)
-- [Format from the command line](#format-from-the-command-line)
+- [Format and validate from the command line](#format-and-validate-from-the-command-line)
 - [What formatting changes](#what-formatting-changes)
 - [Use the Rust library](#use-the-rust-library)
 - [Highlight ASON in Rust](#highlight-ason-in-rust)
@@ -27,13 +27,7 @@ Install the command-line tool with Cargo:
 cargo install asonfmt
 ```
 
-Or install the prebuilt WebAssembly package from npm:
-
-```sh
-npm install --save-exact @hemashushu/ason-format-wasm@1.2.0
-```
-
-## Format from the command line
+## Format and validate from the command line
 
 `asonfmt` reads a file or standard input and writes the result to standard output:
 
@@ -48,6 +42,21 @@ Write to another file or replace the input file:
 asonfmt input.ason --output formatted.ason
 asonfmt input.ason --replace-atomic
 ```
+
+Validate a document without formatting it:
+
+```sh
+asonfmt --validate input.ason
+```
+
+With `-v`/`--validate`, nothing is written on success. An invalid document is reported on standard error with its location, for example:
+
+```text
+asonfmt: input.ason: Error from line: 2 column: 10, to line: 2 column: 13
+List element type does not match the earlier elements.
+```
+
+`--validate` cannot be combined with output, replacement, layout, or color options.
 
 Common options:
 
@@ -68,7 +77,11 @@ By default, indentation is four spaces and generated line breaks use LF. You can
 
 Formatting preserves literal spelling and comment text, including escapes, numeric bases, raw-string delimiters, and line endings inside literals and comments. Multiline literals and comments keep their original internal indentation. Comments stay in their original order; line comments end their line.
 
-The formatter also checks that values in collections have compatible types, including nested collections. Missing object fields and empty collections are allowed when other values provide enough type information. The formatter cannot check application-specific defaults or the full definition of an enumeration without an application schema.
+The formatter also checks that values in collections have compatible types, including nested collections. Missing object fields and empty collections are allowed when other values provide enough type information. The formatter cannot check application-specific defaults or the full definition of an enumeration without an application schema. When a value's type does not match the earlier members of its list, map keys, or map values, the error points at that value; inside nested collections, it points at the member of the innermost collection that conflicts.
+
+The predefined enumerations `Option` and `Result` are always checked. `Option` has only `Some(value)` and `None`, and `Result` has only `Ok(value)` and `Err(error)`. `Some`, `Ok`, and `Err` take exactly one value, and `None` takes none. Both the full forms (`Option::Some(1)`) and the shorthands (`Some(1)`, `None`, `Ok(1)`, `Err("e")`) are accepted and kept as written. Names are case-sensitive, so `some(1)` and `Result::ok(1)` are rejected, as are new variants such as `Option::Foo`.
+
+Like `true`, `false`, `NaN`, and `Inf` (including their type-suffixed forms such as `NaN_f32`), the names `Some`, `None`, `Ok`, and `Err` are reserved. They cannot be used as object keys (`{Some: 1}`) or as enumeration type names (`Some::A`). They can still name a variant of a user-defined enumeration, such as `Custom::Some(1)`.
 
 ## Use the Rust library
 
@@ -93,7 +106,7 @@ let compact_indent = format_with_options(source, &FormatOptions {
 # Ok::<(), ason_format::AsonError>(())
 ```
 
-`format` and `format_with_options` return an error for invalid input. See the [API documentation on docs.rs](https://docs.rs/ason-format/1.2.0/ason_format/) for the full reference.
+`format` and `format_with_options` return an error for invalid input. `validate_document(source)` runs the same checks without formatting. Errors whose location is known are `AsonError::MessageWithRange`, which includes the start and end line and column. See the [API documentation on docs.rs](https://docs.rs/ason-format/1.2.0/ason_format/) for the full reference.
 
 ## Highlight ASON in Rust
 
@@ -117,6 +130,12 @@ HTML token classes are `ason-number`, `ason-boolean`, `ason-char`, `ason-string`
 
 The npm package includes prebuilt WebAssembly, JavaScript bindings, TypeScript declarations, build information, and dependency license notices. Applications using it do not need Rust or a local copy of this repository. It has no npm runtime dependencies.
 
+Install the prebuilt WebAssembly package from npm:
+
+```sh
+npm install --save @hemashushu/ason-format-wasm
+```
+
 In Node.js, initialize the package with its matching `.wasm` file:
 
 ```js
@@ -132,7 +151,7 @@ const validation = JSON.parse(validateDocument('{answer:42}'));
 
 `formatDocument(source, tabSize, insertSpaces, crlf)` formats a document. `tabSize` sets the indentation width, `insertSpaces` selects spaces rather than tabs, and `crlf` selects CRLF rather than LF for generated line breaks. With tabs, one tab is emitted per level and `tabSize` is used for line fitting. `validateDocument(source)` checks a document without formatting it.
 
-Both functions return a JSON string. Successful formatting returns a `success` status and the formatted text; successful validation returns a `success` status with `text: null`. Errors include a message, a kind (`syntax`, `eof`, or `document`), and, when available, a source range. Range offsets are UTF-16 offsets with an exclusive end.
+Both functions return a JSON string. Successful formatting returns a `success` status and the formatted text; successful validation returns a `success` status with `text: null`. Errors include a message, a kind, and, when available, a source range. Range offsets are UTF-16 offsets with an exclusive end. The kind is `syntax` for errors with a source range, including type mismatches and reserved names, `eof` for an unexpected end of the document (the range is at the end), and `document` for errors without a source range.
 
 For browsers, configure your bundler to include `ason_bg.wasm` and pass its URL, bytes, or compiled `WebAssembly.Module` to `init`. Keep the JavaScript bindings and WebAssembly file on the same package version.
 

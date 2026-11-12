@@ -63,9 +63,9 @@ dependencies = [
 
 [[package]]
 name = "ason"
-version = "3.5.0"
+version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ed19c9d71164eda607ba06f37485ebeb7bd893c77663429c4be9ab2a63f764a"
+checksum = "035ba002879ed3d7288304c2ed99c517bd40e70724bb0792b5714905bd425057"
 dependencies = [
  "chrono",
  "hexfloat2",
@@ -75,14 +75,14 @@ dependencies = [
 
 [[package]]
 name = "ason-format"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "ason",
 ]
 
 [[package]]
 name = "ason-format-wasm"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "ason-format",
  "serde",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "asonfmt"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "ason-format",
  "clap",

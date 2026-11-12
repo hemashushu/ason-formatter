@@ -4,12 +4,13 @@
 // the Mozilla Public License version 2.0 and additional exceptions.
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-//! Source-preserving formatting and syntax highlighting for ASON documents.
+//! Source-preserving formatting, validation, and syntax highlighting for ASON documents.
 //!
 //! Use [`format()`] for the default layout or [`format_with_options`] to configure
 //! indentation and line endings. Formatting validates a complete document, including
 //! nested collection types, but keeps literal spellings and comment bodies unchanged.
-//! [`validate_document`] checks syntax and types without formatting.
+//! [`validate_document`] runs the same checks without formatting. Both report the
+//! source range of an invalid value when it is known.
 //!
 //! Highlighting is a separate operation: [`highlight_spans`] classifies tokens,
 //! [`highlight_ansi`] adds terminal colors, and [`highlight_html`] produces an
@@ -36,11 +37,11 @@
 
 mod format;
 mod highlight;
+mod validate;
 
 pub use ason::AsonError;
-pub use format::{
-    FormatOptions, IndentStyle, LineEnding, format, format_with_options, validate_document,
-};
+pub use format::{FormatOptions, IndentStyle, LineEnding, format, format_with_options};
 pub use highlight::{
     HighlightKind, HighlightSpan, highlight_ansi, highlight_html, highlight_spans,
 };
+pub use validate::validate_document;

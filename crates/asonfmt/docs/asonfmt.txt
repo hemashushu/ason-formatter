@@ -1,5 +1,5 @@
 NAME
-    asonfmt - Source-preserving formatting and syntax highlighting for ASON documents
+    asonfmt - Source-preserving formatting, validation, and syntax highlighting for ASON documents
 
 USAGE
     asonfmt [OPTIONS] [INPUT]
@@ -8,6 +8,7 @@ ARGUMENTS
     INPUT                     Input file (defaults to standard input when omitted)
 
 OPTIONS
+    -v, --validate            Only validate the input; write nothing on success
     -r, --replace             Overwrite the input file with formatted output
         --replace-atomic      Use atomic replacement when overwriting the input file
     -o, --output OUTPUT       Write output to this file (defaults to standard output when omitted)
@@ -21,15 +22,22 @@ OPTIONS
     -V, --version             Show version information
 
 EXIT STATUS
-    0   Successful formatting
+    0   Successful formatting or validation
     1   Invalid arguments
-    2   Document error and failed formatting
+    2   Invalid document (failed validation or formatting)
     3   I/O errors
 
 DESCRIPTION
     `INPUT` is optional; if omitted, input is read from stdin. A path named `-`
     is treated as a file. `-o/--output FILE` is also optional and defaults to
     stdout when omitted; an output path named `-` is treated as a file.
+
+    The `-v/--validate` option checks the input without formatting it. Nothing
+    is written on success. An invalid document is reported on stderr with its
+    location when known, such as a value whose type does not match the earlier
+    elements of its list, and the exit status is 2. It cannot be combined with
+    `-o/--output`, `-r/--replace`, `--replace-atomic`, `--indent-width`,
+    `--indent-style`, `--line-ending`, `-c/--color`, or `--complete`.
 
     The `--color` option accepts `auto`, `always`, or `never` and defaults to `auto`.
     Automatic color is enabled only when stdout is a terminal, `NO_COLOR` is
@@ -62,6 +70,9 @@ EXAMPLES
 
     * File to file; no color applied
       asonfmt input.ason -o output.ason
+
+    * Validate only; errors are reported on stderr with exit status 2
+      asonfmt --validate input.ason
 
     * Piped input with tabs and CRLF structural line endings
       cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf

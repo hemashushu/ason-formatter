@@ -17,7 +17,9 @@ use std::{
     process::ExitCode,
 };
 
-use ason_format::{FormatOptions, IndentStyle, LineEnding, format_with_options, highlight_ansi};
+use ason_format::{
+    FormatOptions, IndentStyle, LineEnding, format_with_options, highlight_ansi, validate_document,
+};
 use clap::{CommandFactory, Parser, ValueEnum};
 
 /// Command-line settings parsed by clap, which also supplies help and usage errors.
@@ -26,7 +28,7 @@ use clap::{CommandFactory, Parser, ValueEnum};
     name = "asonfmt",
     version,
     author = "Hemashushu <hippospark@gmail.com>",
-    about = "Source-preserving formatting and syntax highlighting for ASON documents",
+    about = "Source-preserving formatting, validation, and syntax highlighting for ASON documents",
     after_help = "\
 Examples:
   * stdin to stdout; colors are automatic when stdout is a terminal
@@ -38,6 +40,9 @@ Examples:
   * File to file; no color applied
     asonfmt input.ason -o output.ason
 
+  * Validate only; errors are reported on stderr with exit status 2
+    asonfmt --validate input.ason
+
   * Piped input with tabs and CRLF structural line endings
     cat input.ason | asonfmt --indent-style tabs --indent-width 4 --line-ending crlf
     "
@@ -45,6 +50,22 @@ Examples:
 struct Args {
     /// Input file; defaults to standard input when omitted
     input: Option<PathBuf>,
+    /// Only validate the input; print nothing and exit with status 0 if it is valid
+    #[arg(
+        short = 'v',
+        long,
+        conflicts_with_all = [
+            "replace",
+            "replace_atomic",
+            "output",
+            "complete",
+            "indent_width",
+            "indent_style",
+            "line_ending",
+            "color",
+        ]
+    )]
+    validate: bool,
     /// Overwrite the input file with formatted output (not atomic)
     #[arg(
         short,
@@ -211,9 +232,10 @@ fn parse_args() -> Result<Args, clap::Error> {
     Ok(args)
 }
 
-/// Executes one formatting request using the parsed `args`.
+/// Executes one formatting or validation request using the parsed `args`.
 ///
-/// The whole source is read as UTF-8 and formatted before opening an output file,
+/// With `--validate`, the input is only checked and nothing is written.
+/// Otherwise, the whole source is read as UTF-8 and formatted before opening an output file,
 /// so invalid input cannot truncate an existing destination. An opened output
 /// handle is checked for aliases before truncation. Write failures can still
 /// leave partial file output: this is not an atomic file-replacement operation.
@@ -250,6 +272,9 @@ fn run(args: Args) -> io::Result<()> {
             .map_err(|error| contextual(error, &input_label))?;
         None
     };
+    if args.validate {
+        return validate_document(&source).map_err(|error| invalid(error, &input_label));
+    }
     // Finish validation before opening a destination that might already exist.
     let formatted = format_with_options(
         &source,

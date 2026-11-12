@@ -267,6 +267,45 @@ fn rejects_aliases_without_truncating() {
 }
 
 #[test]
+/// Validates without writing anything, reports located errors, and leaves files alone.
+fn validate_only() {
+    let temp = Temp::new();
+    let input = temp.file("input.ason");
+    fs::write(&input, "{a:1}").unwrap();
+    for flag in ["-v", "--validate"] {
+        let result = command().arg(&input).arg(flag).output().unwrap();
+        assert!(result.status.success(), "{:?}", result.stderr);
+        assert!(result.stdout.is_empty());
+        assert!(result.stderr.is_empty());
+    }
+    assert_eq!(fs::read(&input).unwrap(), b"{a:1}");
+
+    let result = stdin(&["--validate"], b"{a: 1\n b: [1 2 true]}");
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("stdin"), "{stderr}");
+    assert!(stderr.contains("line: 2 column: 10"), "{stderr}");
+
+    for conflict in [
+        &["-o", "out.ason"][..],
+        &["--replace"],
+        &["--replace-atomic"],
+        &["--indent-width", "2"],
+        &["--color", "never"],
+    ] {
+        let result = command()
+            .arg(&input)
+            .arg("--validate")
+            .args(conflict)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1), "{conflict:?}");
+    }
+    assert_eq!(fs::read(&input).unwrap(), b"{a:1}");
+}
+
+#[test]
 /// Separates data/I/O failures from argument errors and keeps stdout clean.
 fn errors_are_on_stderr() {
     for source in [b"[".as_slice(), b"1 2", b"\xff"] {

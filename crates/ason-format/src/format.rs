@@ -4,16 +4,16 @@
 // the Mozilla Public License version 2.0 and additional exceptions.
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-//! Validate document values, plan structural spacing, and copy original tokens.
+//! Plan structural spacing for a validated document and copy original tokens.
 //!
-//! Parsing and rendering serve different purposes here. Parsed values let us
-//! check nested collection types, but serializing those values would lose the
-//! spelling of literals and all comments. Instead, a second pass lays out source
-//! tokens and a final pass copies their exact text into the output.
+//! Parsing and rendering serve different purposes here. Parsed values let the
+//! validator check nested collection types, but serializing those values would
+//! lose the spelling of literals and all comments. Instead, a second pass lays
+//! out source tokens and a final pass copies their exact text into the output.
 
 use ason::syntax::{SyntaxKind, SyntaxToken, tokenize};
 
-use crate::AsonError;
+use crate::{AsonError, validate};
 
 const MAX_LINE_WIDTH: usize = 80;
 
@@ -66,11 +66,6 @@ impl LineEnding {
             Self::CrLf => "\r\n",
         }
     }
-}
-
-pub fn validate_document(source: &str) -> Result<(), AsonError> {
-    shape(&ason::de_value_from_str(source)?)?;
-    Ok(())
 }
 
 /// Formats one complete ASON document with four spaces per nesting level.
@@ -137,11 +132,12 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<String, AsonError> {
-    validate_document(source)?;
+    let value = ason::de_value_from_str(source)?;
     let tokens: Vec<_> = tokenize(source)?
         .into_iter()
         .filter(|token| !matches!(token.kind, SyntaxKind::Whitespace | SyntaxKind::Comma))
         .collect();
+    validate::check(source, &value, &validate::structural(&tokens))?;
     // Comments do not participate in the grammar walk. Keep them in `tokens`
     // so the writer can restore them without disturbing structural decisions.
     let comments: Vec<_> = tokens
@@ -417,179 +413,6 @@ impl Layout<'_> {
     }
 }
 
-#[derive(Clone)]
-/// Type information inferred from values, without retaining their actual data.
-///
-/// Empty collections and absent options start with unknown inner types. Merging
-/// shapes from sibling entries fills those gaps and rejects incompatible types.
-/// Objects collect fields by name; enumerations collect payloads by variant name.
-enum Shape {
-    /// No evidence yet, as with the element type of an empty list.
-    Unknown,
-    /// A scalar type, distinguished by its `ason::Value` variant rather than value.
-    Atom(
-        /// The value variant identifying the scalar's type.
-        std::mem::Discriminant<ason::Value>,
-    ),
-    /// A homogeneous list whose entries share one inferred shape.
-    List(
-        /// The common element shape, possibly still unknown for an empty list.
-        Box<Shape>,
-    ),
-    /// A map whose keys and values are checked independently.
-    Map(
-        /// The common key shape.
-        Box<Shape>,
-        /// The common value shape.
-        Box<Shape>,
-    ),
-    /// A fixed-length sequence whose positions may have different types.
-    Tuple(
-        /// One shape per position, in tuple order.
-        Vec<Shape>,
-    ),
-    /// An object whose shared field names must have compatible types.
-    Object(
-        /// Field names mapped to their inferred shapes, independent of source order.
-        std::collections::BTreeMap<String, Shape>,
-    ),
-    /// An enumeration with one shared type name and separately checked variants.
-    Enumeration(
-        /// The enumeration type name, without the variant name.
-        String,
-        /// Known variant names mapped to the shape of each variant's payload.
-        std::collections::BTreeMap<String, Shape>,
-    ),
-    /// An optional value; `None` contributes no evidence about the inner type.
-    Option(
-        /// The inferred shape of a present value, or unknown if none was observed.
-        Box<Shape>,
-    ),
-}
-
-/// Builds the shared diagnostic for incompatible collection member types.
-fn type_error() -> AsonError {
-    AsonError::Message("List elements and Map keys/values must have consistent types.".into())
-}
-
-/// Refines `target` with evidence from `incoming`, or reports incompatible types.
-///
-/// Unknown shapes act as missing information, not as a separate concrete type.
-/// Compound shapes merge recursively: tuple positions must line up, map keys and
-/// values are independent, and enum payloads are compared only within a variant.
-/// A failed merge may leave `target` partly refined; callers discard it on error.
-fn merge(target: &mut Shape, incoming: Shape) -> Result<(), AsonError> {
-    match (target, incoming) {
-        (target @ Shape::Unknown, incoming) => *target = incoming,
-        (_, Shape::Unknown) => {}
-        (Shape::Atom(left), Shape::Atom(right)) if *left == right => {}
-        (Shape::List(left), Shape::List(right)) | (Shape::Option(left), Shape::Option(right)) => {
-            merge(left, *right)?
-        }
-        // Empty bracket syntax carries no evidence that it is a list rather
-        // than a map. Only a list with an unknown element can become a map;
-        // once actual list elements exist, that interpretation is no longer valid.
-        (target @ Shape::List(_), Shape::Map(key, value)) => {
-            if !matches!(target, Shape::List(inner) if matches!(**inner, Shape::Unknown)) {
-                return Err(type_error());
-            }
-            *target = Shape::Map(key, value);
-        }
-        (Shape::Map(_, _), Shape::List(inner)) if matches!(*inner, Shape::Unknown) => {}
-        (Shape::Map(left_key, left_value), Shape::Map(right_key, right_value)) => {
-            merge(left_key, *right_key)?;
-            merge(left_value, *right_value)?;
-        }
-        (Shape::Tuple(left), Shape::Tuple(right)) if left.len() == right.len() => {
-            for (left, right) in left.iter_mut().zip(right) {
-                merge(left, right)?;
-            }
-        }
-        (Shape::Object(left), Shape::Object(right)) => merge_fields(left, right)?,
-        (Shape::Enumeration(left_name, left), Shape::Enumeration(right_name, right))
-            if *left_name == right_name =>
-        {
-            merge_fields(left, right)?
-        }
-        _ => return Err(type_error()),
-    }
-    Ok(())
-}
-
-/// Merges named fields or enum variants, checking only names present in both.
-///
-/// Missing names add new evidence rather than causing an error. This lets objects
-/// with different field sets coexist while still checking shared fields.
-fn merge_fields(
-    target: &mut std::collections::BTreeMap<String, Shape>,
-    incoming: std::collections::BTreeMap<String, Shape>,
-) -> Result<(), AsonError> {
-    for (name, incoming) in incoming {
-        merge(target.entry(name).or_insert(Shape::Unknown), incoming)?;
-    }
-    Ok(())
-}
-
-/// Infers a recursive shape and checks homogeneous collections along the way.
-///
-/// `value` is already parsed, so this pass can focus on relationships between
-/// values rather than token syntax. Lists merge all elements; maps separately
-/// merge all keys and all values. Tuples retain a shape for every position.
-fn shape(value: &ason::Value) -> Result<Shape, AsonError> {
-    use ason::{Value, VariantValue};
-    // Use names rather than source positions so field order cannot change type
-    // compatibility. The same conversion also handles struct-style variants.
-    let fields = |fields: &[(String, Value)]| -> Result<_, AsonError> {
-        fields
-            .iter()
-            .map(|(name, value)| Ok((name.clone(), shape(value)?)))
-            .collect::<Result<std::collections::BTreeMap<_, _>, _>>()
-    };
-    Ok(match value {
-        Value::List(values) => {
-            let mut element = Shape::Unknown;
-            for value in values {
-                merge(&mut element, shape(value)?)?;
-            }
-            Shape::List(Box::new(element))
-        }
-        Value::Map(entries) => {
-            let (mut key, mut value) = (Shape::Unknown, Shape::Unknown);
-            for (entry_key, entry_value) in entries {
-                merge(&mut key, shape(entry_key)?)?;
-                merge(&mut value, shape(entry_value)?)?;
-            }
-            Shape::Map(Box::new(key), Box::new(value))
-        }
-        Value::Tuple(values) => Shape::Tuple(values.iter().map(shape).collect::<Result<_, _>>()?),
-        Value::Object(values) => Shape::Object(fields(values)?),
-        Value::Option(value) => Shape::Option(Box::new(match value {
-            Some(value) => shape(value)?,
-            None => Shape::Unknown,
-        })),
-        Value::Enumeration {
-            name,
-            variant,
-            payload,
-        } => {
-            // A variant's name selects its own payload shape. Unit variants use
-            // an empty tuple, while struct payloads keep their named fields.
-            let payload = match payload {
-                VariantValue::Unit => Shape::Tuple(Vec::new()),
-                VariantValue::Newtype(value) => Shape::Tuple(vec![shape(value)?]),
-                VariantValue::Tuple(values) => {
-                    Shape::Tuple(values.iter().map(shape).collect::<Result<_, _>>()?)
-                }
-                VariantValue::Struct(values) => Shape::Object(fields(values)?),
-            };
-            Shape::Enumeration(name.clone(), [(variant.clone(), payload)].into())
-        }
-        // Compare scalar variants, not scalar contents: two different numbers
-        // can share a type without needing equal values.
-        _ => Shape::Atom(std::mem::discriminant(value)),
-    })
-}
-
 /// Builds output from unchanged token text and planned leading whitespace.
 struct Writer {
     /// The accumulated formatted document, before the final newline is appended.
@@ -643,6 +466,7 @@ impl Writer {
 /// Covers exact layout, semantic preservation, and recursive type compatibility.
 mod tests {
     use super::*;
+    use crate::validate_document;
 
     /// Collects literal and comment spellings that formatting must never change.
     fn preserved(source: &str) -> Vec<String> {
@@ -744,6 +568,31 @@ mod tests {
             "{None: 1}",
             "{Ok: 1}",
             "{Err: 1}",
+            "{NaN: 1}",
+            "{Inf: 1}",
+            // `Option` and `Result` keep their exact variants and payload kinds.
+            "None(1)",
+            "Option::None(1)",
+            "Some",
+            "Some(1 2)",
+            "Some{a: 1}",
+            "Option::Some{a: 1}",
+            "Option::Foo",
+            "Option::some(1)",
+            "Ok",
+            "Ok(1 2)",
+            "Err",
+            "Err{a: 1}",
+            "Result::Ok",
+            "Result::Foo(1)",
+            "Result::ok(1)",
+            // Shorthands are case-sensitive, so other spellings are not values.
+            "some(1)",
+            "NONE",
+            "ok(1)",
+            "ERR(1)",
+            // Reserved words cannot name an Enumeration (see `validate`).
+            "[Some::A]",
             "{a: 1 a: 2}",
             "256_u8",
             "[",
@@ -875,37 +724,6 @@ mod tests {
         );
         assert_eq!(check("[/* empty */]"), "[\n    /* empty */\n]\n");
         assert_eq!(check("{a: /* value */ 1}"), "{\n    a: /* value */ 1\n}\n");
-    }
-
-    #[test]
-    /// Covers unknown-type refinement and incompatible nested collection shapes.
-    fn compound_type_inference() {
-        for source in [
-            "[[] [1] [2]]",
-            "[[] [1: true]]",
-            "[[1: true] []]",
-            "[{} {a: 1} {a: 2 b: true}]",
-            "[Option::None Option::Some(1)]",
-            "[Color::Red Color::Rgb(1 2 3)]",
-            "[{b: true a: 1} {a: 2 b: false}]",
-            "(NaN NaN_f32 -Inf +Inf_f32 -128_i8 255_u8 65_535_u16)",
-        ] {
-            check(source);
-        }
-        for source in [
-            "[[1] [true]]",
-            "[1: true 2: 3]",
-            "[1: true false: true]",
-            "[(1 true) (2 3)]",
-            "[{a: 1} {a: true}]",
-            "[Option::Some(1) Option::Some(true)]",
-            "[Color::Rgb(1) Color::Rgb(true)]",
-            "[A::X B::X]",
-            "[[] [1] [true]]",
-            "[[] [1: true] [false: true]]",
-        ] {
-            assert!(format(source).is_err(), "{source}");
-        }
     }
 
     #[test]
