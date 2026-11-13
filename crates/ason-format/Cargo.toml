@@ -16,4 +16,5 @@ keywords = [
 categories = ["text-processing"]
 
 [dependencies]
-ason = {path = "../../../ason", version = "4.0.0"}
+# ason = {path = "../../../ason", version = "4.0.0"}
+ason = "4.1.0"

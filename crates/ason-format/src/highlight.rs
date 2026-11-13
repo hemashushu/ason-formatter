@@ -312,6 +312,22 @@ mod tests {
     }
 
     #[test]
+    /// Shorthand names used as Object keys are highlighted as identifiers.
+    fn shorthand_object_keys_are_identifiers() {
+        let source = "{Some: Some(1)}";
+        let kinds: Vec<_> = highlight_spans(source)
+            .unwrap()
+            .into_iter()
+            .filter(|span| &source[span.span.clone()] == "Some")
+            .map(|span| span.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            [HighlightKind::Identifier, HighlightKind::Enumeration]
+        );
+    }
+
+    #[test]
     /// Removing the generated ANSI sequences must recover the exact input.
     fn ansi_round_trip() {
         let source = " // 中\r\n{key: r\"/*hi*/\", n: -1}\n";

@@ -523,6 +523,9 @@ mod tests {
             "None",
             "Option::Some(None)",
             "Some({id: 123 name: \"Alice\"})",
+            // Variant shorthand names are ordinary identifiers outside value position.
+            "{Some: Some(1) None: None Ok: Ok(2) Err: Err(3)}",
+            "[None: Some::A]",
         ] {
             assert_eq!(check(source), format!("{source}\n"));
         }
@@ -564,12 +567,9 @@ mod tests {
             "[1 true]",
             "()",
             "Option::Some()",
-            "{Some: 1}",
-            "{None: 1}",
-            "{Ok: 1}",
-            "{Err: 1}",
             "{NaN: 1}",
             "{Inf: 1}",
+            "{true: 1}",
             // `Option` and `Result` keep their exact variants and payload kinds.
             "None(1)",
             "Option::None(1)",
@@ -591,8 +591,9 @@ mod tests {
             "NONE",
             "ok(1)",
             "ERR(1)",
-            // Reserved words cannot name an Enumeration (see `validate`).
-            "[Some::A]",
+            // Keywords cannot name an Enumeration or a variant.
+            "[true::A]",
+            "Color::NaN",
             "{a: 1 a: 2}",
             "256_u8",
             "[",

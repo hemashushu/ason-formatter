@@ -56,11 +56,11 @@ test("WASM structured diagnostics use UTF-16 exclusive ranges", () => {
         [typeError.kind, typeError.start, typeError.end],
         ["syntax", 3, 7],
     );
-    const reserved = "{\u{1f600}: Some::A}";
+    const reserved = "{\u{1f600}: NaN::A}";
     const reservedError = JSON.parse(validateDocument(reserved)).error;
     assert.equal(
         reserved.slice(reservedError.start, reservedError.end),
-        "Some",
+        "NaN",
     );
     assert.equal(JSON.parse(validateDocument("[")).error.start, 1);
     for (const value of [

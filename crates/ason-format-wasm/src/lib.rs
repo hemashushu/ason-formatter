@@ -136,7 +136,7 @@ mod tests {
         );
         assert_eq!(error["error"]["end"], source.encode_utf16().count() - 1);
         let error: serde_json::Value =
-            serde_json::from_str(&validate_document("{a: None::B}")).unwrap();
+            serde_json::from_str(&validate_document("{a: true::B}")).unwrap();
         assert_eq!(
             (&error["error"]["start"], &error["error"]["end"]),
             (&4.into(), &8.into())

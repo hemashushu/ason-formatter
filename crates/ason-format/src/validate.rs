@@ -6,10 +6,10 @@
 
 //! Validate a document beyond what the ASON parser checks, reporting source ranges.
 //!
-//! The parser checks syntax, value ranges, duplicate keys, reserved Object keys,
-//! and the predefined `Option` and `Result` Enumerations. This module adds two
-//! document-level checks: collection members must have compatible types, and
-//! reserved words cannot name an Enumeration type.
+//! The parser checks syntax, value ranges, duplicate keys, reserved keywords in
+//! Object keys and Enumeration names, and the predefined `Option` and `Result`
+//! Enumerations. This module adds a document-level check: collection members
+//! must have compatible types.
 //!
 //! Parsed values do not record where they came from, so the checker walks the
 //! value tree and the structural tokens together. Each value consumes exactly
@@ -21,22 +21,13 @@ use ason::syntax::{SyntaxKind, SyntaxToken, tokenize};
 
 use crate::AsonError;
 
-/// Keywords of the ASON lexer, including the `Option`/`Result` variant shorthands.
-///
-/// The parser already rejects them as Object keys, but it still accepts them as
-/// the type name of a user-defined Enumeration (e.g. `Some::A`).
-const RESERVED_WORDS: &[&str] = &[
-    "true", "false", "NaN", "NaN_f32", "NaN_f64", "Inf", "Inf_f32", "Inf_f64", "Some", "None",
-    "Ok", "Err",
-];
-
 /// Checks that `source` is one valid ASON value with consistent collection types.
 ///
 /// # Errors
 ///
 /// Returns the parser's error for invalid syntax or values. Inconsistent
-/// collection types and reserved Enumeration type names are reported as
-/// [`AsonError::MessageWithRange`] covering the offending value or name.
+/// collection types are reported as [`AsonError::MessageWithRange`] covering
+/// the offending value.
 ///
 /// # Examples
 ///
@@ -233,18 +224,7 @@ impl Checker<'_> {
                 variant,
                 payload,
             } => {
-                let token = self.expect(SyntaxKind::Enumeration)?;
-                if RESERVED_WORDS.contains(&name.as_str()) {
-                    // Full forms are spelled `name::variant` without whitespace.
-                    let start = token.span.start;
-                    return Err(range_error(
-                        self.source,
-                        start..start + name.len(),
-                        format!(
-                            "\"{name}\" is a reserved word and cannot be used as an Enumeration name."
-                        ),
-                    ));
-                }
+                self.expect(SyntaxKind::Enumeration)?;
                 // A variant's name selects its own payload shape. Unit variants use
                 // an empty tuple, while struct payloads keep their named fields.
                 let payload = match payload {
@@ -454,21 +434,26 @@ mod tests {
     }
 
     #[test]
-    /// Reports only the type name of a reserved Enumeration type name.
+    /// The parser reports only the keyword used as an Enumeration or variant name.
     fn locates_reserved_enumeration_names() {
         for (source, text, line, column) in [
-            ("Some::A", "Some", 1, 1),
-            ("None::A", "None", 1, 1),
-            ("Ok::A(1)", "Ok", 1, 1),
-            ("Err::A{a: 1}", "Err", 1, 1),
             ("NaN::A", "NaN", 1, 1),
             ("Inf_f32::A", "Inf_f32", 1, 1),
             ("true::A", "true", 1, 1),
-            ("[Some::A]", "Some", 1, 2),
-            ("{a: 1\n b: None::B}", "None", 2, 5),
+            ("[Color::false]", "false", 1, 9),
+            ("{a: 1\n b: E::Inf(1)}", "Inf", 2, 8),
         ] {
             assert_eq!(located(source), (text.into(), line, column), "{source}");
         }
-        assert!(validate_document("Custom::Some(1)").is_ok());
+        // Variant shorthand names are ordinary identifiers.
+        for source in [
+            "Custom::Some(1)",
+            "Some::A",
+            "[None::A None::B]",
+            "Err::A{a: 1}",
+            "{Some: Some(1), None: None, Ok: Ok(1), Err: Err(2)}",
+        ] {
+            assert!(validate_document(source).is_ok(), "{source}");
+        }
     }
 }

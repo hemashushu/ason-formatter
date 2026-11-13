@@ -81,7 +81,7 @@ The formatter also checks that values in collections have compatible types, incl
 
 The predefined enumerations `Option` and `Result` are always checked. `Option` has only `Some(value)` and `None`, and `Result` has only `Ok(value)` and `Err(error)`. `Some`, `Ok`, and `Err` take exactly one value, and `None` takes none. Both the full forms (`Option::Some(1)`) and the shorthands (`Some(1)`, `None`, `Ok(1)`, `Err("e")`) are accepted and kept as written. Names are case-sensitive, so `some(1)` and `Result::ok(1)` are rejected, as are new variants such as `Option::Foo`.
 
-Like `true`, `false`, `NaN`, and `Inf` (including their type-suffixed forms such as `NaN_f32`), the names `Some`, `None`, `Ok`, and `Err` are reserved. They cannot be used as object keys (`{Some: 1}`) or as enumeration type names (`Some::A`). They can still name a variant of a user-defined enumeration, such as `Custom::Some(1)`.
+`true`, `false`, `NaN`, and `Inf` (including their type-suffixed forms such as `NaN_f32`) are reserved keywords. They cannot be used as object keys (`{NaN: 1}`), enumeration type names (`true::A`), or variant names (`Color::Inf`). The variant shorthand names `Some`, `None`, `Ok`, and `Err` are not reserved: they can be used as object keys (`{Some: Some(1)}`), enumeration type names (`Some::A`), and variant names (`Custom::Some(1)`).
 
 ## Use the Rust library
 
