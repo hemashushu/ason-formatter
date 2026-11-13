@@ -1,6 +1,6 @@
 [package]
 name = "ason-format"
-version = "1.4.0"
+version = "1.5.0"
 edition = "2024"
 description = "Source-preserving formatter and syntax highlighter for ASON documents"
 license-file = "LICENSE.additional"
@@ -16,4 +16,4 @@ keywords = [
 categories = ["text-processing"]
 
 [dependencies]
-ason = "3.6.0"
+ason = {path = "../../../ason", version = "4.0.0"}

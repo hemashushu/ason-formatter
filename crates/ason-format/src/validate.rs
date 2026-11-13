@@ -228,18 +228,6 @@ impl Checker<'_> {
                 Shape::Tuple(shapes)
             }
             Value::Object(fields) => Shape::Object(self.fields(fields)?),
-            Value::Option(value) => {
-                self.expect(SyntaxKind::Enumeration)?;
-                Shape::Option(Box::new(match value {
-                    Some(value) => {
-                        self.expect(SyntaxKind::ParenthesisOpen)?;
-                        let shape = self.shape(value)?;
-                        self.expect(SyntaxKind::ParenthesisClose)?;
-                        shape
-                    }
-                    None => Shape::Unknown,
-                }))
-            }
             Value::Enumeration {
                 name,
                 variant,
@@ -305,7 +293,7 @@ impl Checker<'_> {
 #[derive(Clone)]
 /// Type information inferred from values, without retaining their actual data.
 ///
-/// Empty collections and absent options start with unknown inner types. Merging
+/// Empty collections start with unknown inner types. Merging
 /// shapes from sibling entries fills those gaps and rejects incompatible types.
 /// Objects collect fields by name; enumerations collect payloads by variant name.
 enum Shape {
@@ -323,8 +311,6 @@ enum Shape {
     Object(BTreeMap<String, Shape>),
     /// An enumeration type name with known variant names mapped to payload shapes.
     Enumeration(String, BTreeMap<String, Shape>),
-    /// An optional value; `None` contributes no evidence about the inner type.
-    Option(Box<Shape>),
 }
 
 /// Marks two shapes that cannot describe the same type.
@@ -341,9 +327,7 @@ fn merge(target: &mut Shape, incoming: Shape) -> Result<(), Mismatch> {
         (target @ Shape::Unknown, incoming) => *target = incoming,
         (_, Shape::Unknown) => {}
         (Shape::Atom(left), Shape::Atom(right)) if *left == right => {}
-        (Shape::List(left), Shape::List(right)) | (Shape::Option(left), Shape::Option(right)) => {
-            merge(left, *right)?
-        }
+        (Shape::List(left), Shape::List(right)) => merge(left, *right)?,
         // Empty bracket syntax carries no evidence that it is a list rather
         // than a map. Only a list with an unknown element can become a map;
         // once actual list elements exist, that interpretation is no longer valid.
