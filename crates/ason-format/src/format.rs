@@ -17,27 +17,58 @@ use crate::{AsonError, validate};
 
 const MAX_LINE_WIDTH: usize = 80;
 
-/// Controls the whitespace added around tokens during formatting.
+/// Layout settings for [`format_with_options`].
 ///
-/// Literal and comment contents are copied verbatim, even when they contain
-/// multiple lines. These settings affect surrounding layout, not their contents.
+/// The options only control whitespace that the formatter inserts between
+/// tokens: indentation and line endings. Literal and comment contents are copied
+/// verbatim, even when they span multiple lines. [`FormatOptions::default`] uses
+/// four spaces per nesting level and LF line endings, the same layout as
+/// [`format()`]. The 80-column limit for compact containers is not configurable.
+///
+/// # Examples
+///
+/// ```
+/// use ason_format::{FormatOptions, IndentStyle, LineEnding, format_with_options};
+///
+/// let options = FormatOptions {
+///     indent_width: 4,
+///     indent_style: IndentStyle::Tabs,
+///     line_ending: LineEnding::CrLf,
+/// };
+/// assert_eq!(
+///     format_with_options("[1 /* comment */ 2]", &options)?,
+///     "[\r\n\t1 /* comment */\r\n\t2\r\n]\r\n"
+/// );
+/// # Ok::<(), ason_format::AsonError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormatOptions {
-    /// The number of spaces per nesting level. With tabs, one tab is emitted per
-    /// level and this value is the tab's visual width for line-fit calculations;
-    /// it does not control the number of tab characters emitted.
+    /// The width of one nesting level, in columns. The default is four.
     ///
-    /// The default is four. A width of zero removes space indentation, but tabs
-    /// are still emitted once per level; zero only affects line-fit calculations
-    /// in that mode. A width that cannot be represented or reserved when writing
-    /// an indented token makes formatting return an error.
+    /// With [`IndentStyle::Spaces`], each level is written as this many spaces,
+    /// and zero disables indentation. With [`IndentStyle::Tabs`], each level is
+    /// always written as one tab; this value is only the assumed tab width when
+    /// deciding whether a container fits on one line.
+    ///
+    /// With spaces, formatting fails if a line's indentation (nesting depth times
+    /// this width) overflows `usize` or cannot be allocated. With tabs, a very
+    /// large width never causes an error; it only prevents nested containers
+    /// from using the compact one-line layout.
     pub indent_width: usize,
+    /// The character used to indent nested lines.
+    ///
+    /// Defaults to [`IndentStyle::Spaces`]. See [`FormatOptions::indent_width`]
+    /// for how the width is interpreted with each style.
     pub indent_style: IndentStyle,
+    /// The line ending inserted between formatted lines and after the value.
+    ///
+    /// Defaults to [`LineEnding::Lf`]. Line endings inside multiline strings,
+    /// byte data, and block comments are copied from the source, not converted.
     pub line_ending: LineEnding,
 }
 
 impl Default for FormatOptions {
-    /// Uses four spaces per level and keeps containers on one line when they fit.
+    /// Returns four-space indentation with LF line endings.
     fn default() -> Self {
         Self {
             indent_width: 4,
@@ -47,19 +78,33 @@ impl Default for FormatOptions {
     }
 }
 
+/// The character used to indent lines inside multiline containers.
+///
+/// Only the formatter's own indentation is affected; whitespace inside
+/// multiline literals and comments is never reindented.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndentStyle {
+    /// Indent each level with [`FormatOptions::indent_width`] spaces.
     Spaces,
+    /// Indent each level with one tab, regardless of the configured width.
     Tabs,
 }
 
+/// The line ending inserted by the formatter.
+///
+/// The source may use either line ending. Line breaks between tokens are
+/// replaced with the selected ending, but line endings inside literals and
+/// block comments are copied unchanged, so the output may still contain both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineEnding {
+    /// A line feed (`\n`).
     Lf,
+    /// A carriage return followed by a line feed (`\r\n`).
     CrLf,
 }
 
 impl LineEnding {
+    /// Returns the characters written for this line ending.
     fn as_str(self) -> &'static str {
         match self {
             Self::Lf => "\n",
@@ -68,23 +113,27 @@ impl LineEnding {
     }
 }
 
-/// Formats one complete ASON document with four spaces per nesting level.
+/// Formats one complete ASON document using four-space indentation and LF line endings.
+///
+/// This is equivalent to calling [`format_with_options`] with
+/// [`FormatOptions::default`]; see that function for the full layout rules.
 ///
 /// # Arguments
 ///
 /// * `source` - UTF-8 text containing exactly one ASON value, with optional
 ///   surrounding whitespace and comments.
 ///
-/// Containers without comments or multiline tokens stay on one line when the
-/// result fits within 80 characters; otherwise, nonempty containers use
-/// multiple lines. Optional commas are removed, and the result ends with a
-/// newline. Literal spellings and comment bodies are kept exactly as written.
-/// Formatting an already formatted result leaves it unchanged.
+/// In brief, a container stays on one line when it fits within 80 columns and
+/// contains no comments or line breaks; otherwise each entry goes on its own
+/// line. Commas and blank lines are removed, and the result ends with a newline.
+/// Literal spellings and comment bodies are kept exactly as written. Formatting
+/// an already formatted result leaves it unchanged.
 ///
 /// # Errors
 ///
-/// Returns an error for invalid syntax, invalid values, or inconsistent element
-/// types in lists or map keys/values. See [`format_with_options`] for custom layout.
+/// Returns the same errors as [`validate_document`](crate::validate_document):
+/// invalid syntax, invalid values, or values whose types are inconsistent with
+/// earlier members of the same list or map.
 ///
 /// # Examples
 ///
@@ -98,26 +147,44 @@ pub fn format(source: &str) -> Result<String, AsonError> {
     format_with_options(source, &FormatOptions::default())
 }
 
-/// Validates and formats a document with the supplied layout settings.
+/// Validates one complete ASON document, then formats it with `options`.
 ///
 /// # Arguments
 ///
 /// * `source` - UTF-8 text containing exactly one ASON value. Comments are allowed;
 ///   an empty document or a document containing only comments is not a value.
-/// * `options` - Layout settings borrowed for this call. `indent_width` controls
-///   spaces per nesting level or the visual width of tabs when using tab indentation.
+/// * `options` - Indentation and line-ending settings; see [`FormatOptions`].
 ///
-/// The formatter copies each literal and comment from the original source rather
-/// than serializing parsed values. Numeric bases, escape sequences, raw-string
-/// delimiters, and whitespace inside multiline tokens therefore stay intact.
-/// Whitespace between tokens and optional commas are replaced by the chosen
-/// layout. A final newline is always appended.
+/// # Preserved text
+///
+/// Each literal and comment is copied from the source rather than serialized
+/// from the parsed value. Numeric bases and type suffixes, escape sequences,
+/// raw-string delimiters, and whitespace inside multiline tokens therefore stay
+/// intact. All other whitespace, including blank lines, is replaced by the
+/// layout below, and all commas are removed.
+///
+/// # Layout
+///
+/// * Object fields and map entries are written as `key: value`. A sign stays
+///   attached to its number, and an enumeration name to its payload.
+/// * A nonempty container is written on one line, with entries separated by
+///   single spaces, when the container plus its indentation fits within 80
+///   columns, it contains no comments, and none of its tokens or nested
+///   containers span multiple lines. Columns are counted in characters, and a
+///   preceding `key: ` on the same line is not included.
+/// * Otherwise, each entry starts on its own line, indented one level deeper
+///   than the container, and the closing delimiter gets its own line.
+/// * A comment that follows a line break in the source, an opening delimiter,
+///   or another line comment starts on its own line; otherwise it stays one
+///   space after the previous token. The token after a line comment, or after
+///   a block comment followed by a line break, starts on a new line.
+/// * The result always ends with `options.line_ending`.
 ///
 /// # Errors
 ///
-/// Returns parsing or tokenization errors, type-consistency errors in nested
-/// collections, or an error if an indentation size cannot be represented or
-/// reserved. No partial output is returned on failure.
+/// Returns the same errors as [`validate_document`](crate::validate_document),
+/// or an error when space indentation is too large to represent or allocate
+/// (see [`FormatOptions::indent_width`]). No partial output is returned.
 ///
 /// # Examples
 ///
@@ -128,7 +195,12 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 ///     indent_width: 2,
 ///     ..FormatOptions::default()
 /// };
+/// // Short containers stay on one line; a comment forces one entry per line.
 /// assert_eq!(format_with_options("[1,2]", &options)?, "[1 2]\n");
+/// assert_eq!(
+///     format_with_options("{a:1 // one\n\n b:[2,3]}", &options)?,
+///     "{\n  a: 1 // one\n  b: [2 3]\n}\n"
+/// );
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<String, AsonError> {
@@ -170,8 +242,9 @@ pub fn format_with_options(source: &str, options: &FormatOptions) -> Result<Stri
     let mut depth = 0;
     for token in &tokens {
         let comment = is_comment(token.kind);
-        // Comments use the surrounding nesting depth. A source newline keeps a
-        // comment on its own line; otherwise a block comment can remain inline.
+        // Comments use the surrounding nesting depth. A comment goes on its own
+        // line after an opener, a line comment, or a source line break;
+        // otherwise it trails the previous token, whether line or block comment.
         let (mut gap, token_depth) = if comment {
             let gap = match previous {
                 None => Gap::None,
@@ -262,7 +335,7 @@ struct Layout<'a> {
     tokens: &'a [&'a SyntaxToken],
     /// Comments excluded from the grammar walk but used to protect comment layout.
     comments: &'a [&'a SyntaxToken],
-    /// Spaces per nesting level, used when measuring line width.
+    /// Columns per nesting level when measuring line width, for spaces or tabs.
     indent_width: usize,
     /// Index of the next token that has not yet received a placement.
     cursor: usize,
@@ -353,8 +426,8 @@ impl Layout<'_> {
         Ok(())
     }
 
-    /// Checks the compact form, counting indentation and rejecting comments or
-    /// tokens that already contain line breaks.
+    /// Checks the compact form, counting indentation and rejecting comments,
+    /// tokens that already contain line breaks, and nested multiline containers.
     fn fits_single_line(
         &self,
         opening_index: usize,
@@ -417,7 +490,7 @@ impl Layout<'_> {
 struct Writer {
     /// The accumulated formatted document, before the final newline is appended.
     output: String,
-    /// Spaces per nesting level, copied from the caller's format options.
+    /// Spaces per nesting level; ignored when indenting with tabs.
     indent_width: usize,
     indent_style: IndentStyle,
     line_ending: LineEnding,

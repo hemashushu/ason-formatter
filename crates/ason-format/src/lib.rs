@@ -39,6 +39,21 @@ mod format;
 mod highlight;
 mod validate;
 
+/// The error type returned by every fallible function in this crate.
+///
+/// This is [`ason::AsonError`], re-exported so callers do not need a direct
+/// dependency on `ason`. Its variants are:
+///
+/// * `Message` - a message without a source location, such as an indentation
+///   that is too large to allocate.
+/// * `UnexpectedEndOfDocument` - the input ended inside an unfinished construct.
+/// * `MessageWithPosition` - a message with the position of one character.
+/// * `MessageWithRange` - a message with an inclusive range of source text, used
+///   for example by [`validate_document`] for type conflicts.
+///
+/// Positions count characters rather than bytes, and their `line` and `column`
+/// fields start at zero. The `Display` implementation prints one-based line
+/// and column numbers.
 pub use ason::AsonError;
 pub use format::{FormatOptions, IndentStyle, LineEnding, format, format_with_options};
 pub use highlight::{

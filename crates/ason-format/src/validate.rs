@@ -23,11 +23,33 @@ use crate::AsonError;
 
 /// Checks that `source` is one valid ASON value with consistent collection types.
 ///
+/// The source may contain whitespace and comments, but must contain exactly one
+/// value. The ASON parser checks syntax and individual values. This function
+/// additionally requires that, in every list, all elements have compatible
+/// types, and in every map, all keys and, separately, all values have
+/// compatible types. Collections nested at any depth are checked as well.
+/// The source is not modified.
+///
+/// Two values have compatible types when:
+///
+/// * Scalars have the same ASON type. Numeric type suffixes count, so `1` (an
+///   `i32`) and `2_u8` are incompatible; the actual values may differ.
+/// * Tuples have the same length and compatible types at each position.
+/// * Objects have compatible types for the fields they share; their field sets
+///   may differ.
+/// * Enumeration values have the same enumeration name, and the payloads of the
+///   same variant are compatible; different variants may carry different payloads.
+///   Shorthands such as `Some(1)` and `Option::Some(1)` name the same enumeration.
+/// * Lists and maps have compatible element, key, and value types. An empty `[]`
+///   is compatible with any list or map, since it provides no type information.
+///
 /// # Errors
 ///
-/// Returns the parser's error for invalid syntax or values. Inconsistent
-/// collection types are reported as [`AsonError::MessageWithRange`] covering
-/// the offending value.
+/// Returns the parser's error for invalid syntax or values. A type conflict is
+/// reported as [`AsonError::MessageWithRange`] covering the first value, in
+/// source order, that conflicts with earlier members of the collection directly
+/// containing it. Range positions count characters, lines and columns start at
+/// zero, and the end position is inclusive.
 ///
 /// # Examples
 ///
@@ -37,6 +59,10 @@ use crate::AsonError;
 /// assert!(validate_document("[1 2 3]").is_ok());
 /// let error = validate_document("[1 2 true]").unwrap_err();
 /// assert!(matches!(error, AsonError::MessageWithRange(..)));
+/// assert!(validate_document("[{} {a: 1} {a: 2 b: true}]").is_ok());
+/// assert!(validate_document("[{a: 1} {a: true}]").is_err());
+/// assert!(validate_document("[1 2_u8]").is_err());
+/// assert!(validate_document("[None Some(1) Option::Some(2)]").is_ok());
 /// ```
 pub fn validate_document(source: &str) -> Result<(), AsonError> {
     let value = ason::de_value_from_str(source)?;

@@ -19,39 +19,45 @@ use crate::AsonError;
 ///
 /// Categories describe lexical tokens, not the meaning of a parsed value. For
 /// example, a numeric sign has its own token but uses the number category.
+/// Whitespace is not assigned a category. Each category has an `ason-*` CSS
+/// class returned by [`HighlightKind::css_class`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HighlightKind {
-    /// A numeric literal or its leading sign.
+    /// A numeric literal, including `NaN`, `Inf`, and type suffixes, or a
+    /// leading `+`/`-` sign. The sign and the number are separate spans.
     Number,
     /// A `true` or `false` literal.
     Boolean,
-    /// A single-character literal, including its quotes and escapes.
+    /// A character literal, including its quotes and escapes.
     Char,
     /// A string literal, including ordinary, raw, and multiline forms.
     String,
-    /// A date/time literal, including its prefix and quotes.
+    /// A date/time literal, including its `d` prefix and quotes.
     DateTime,
-    /// A byte-data literal, including its prefix and quotes.
+    /// A byte-data literal, including its `h` prefix and quotes.
     Bytes,
-    /// A bare identifier, such as an object field name.
+    /// An object field name, or a field name in an enumeration struct payload.
+    ///
+    /// Names such as `Some` are identifiers in key position, as in `{Some: 1}`.
     Identifier,
-    /// A qualified enumeration name such as `Color::Red`.
+    /// An enumeration name such as `Color::Red`, or a variant shorthand such as
+    /// `Some`, `None`, `Ok`, or `Err` in value position.
+    ///
+    /// The span covers only the name; a payload's delimiters and values have
+    /// their own spans.
     Enumeration,
-    /// A line comment or a complete block comment.
+    /// A line comment or a complete block comment, including nested comments.
     Comment,
-    /// Structural syntax, including delimiters, colons, and commas.
+    /// Structural syntax: braces, brackets, parentheses, colons, and commas.
     Punctuation,
 }
 
 impl HighlightKind {
     /// Returns the stable CSS class used for this category in HTML output.
     ///
-    /// # Arguments
-    ///
-    /// * `self` - The category to translate into an `ason-*` class name.
-    ///
-    /// The result is a static string with no leading dot. Use it in a `class`
-    /// attribute, or add a dot when constructing a stylesheet selector.
+    /// Every class has the form `ason-<category>`, for example `ason-number` or
+    /// `ason-datetime`, and has no leading dot. Use it in a `class` attribute, or
+    /// prefix a dot when writing a stylesheet selector.
     ///
     /// # Examples
     ///
@@ -105,21 +111,25 @@ pub struct HighlightSpan {
     pub span: Range<usize>,
 }
 
-/// Returns ordered, non-overlapping highlight ranges, excluding whitespace.
+/// Classifies the tokens of `source`, returning ordered, non-overlapping spans.
 ///
 /// # Arguments
 ///
 /// * `source` - The unchanged ASON text whose tokens should be classified. It can
-///   be a complete document or a structurally incomplete fragment.
+///   be a complete document or a fragment, such as one with unclosed containers.
 ///
-/// Whitespace has no span of its own. Comments and punctuation do, so a renderer
-/// can style them without having to infer their locations. No formatting or
-/// semantic type checking takes place.
+/// Every token except whitespace gets a span, including comments and
+/// punctuation, so a renderer can style them without inferring their locations.
+/// Text between consecutive spans is always whitespace. Empty or
+/// whitespace-only input produces an empty vector. No parsing, formatting, or
+/// type checking takes place.
 ///
 /// # Errors
 ///
 /// Returns the tokenizer's error for invalid lexical input, such as an unfinished
-/// string. Unclosed containers alone are allowed because no parser is run.
+/// string or a number outside the range of its type suffix (`256_u8`). Structural
+/// problems, such as unclosed containers or several top-level values, are not
+/// errors because no parser is run.
 ///
 /// # Examples
 ///
@@ -130,6 +140,8 @@ pub struct HighlightSpan {
 /// let spans = highlight_spans(source)?;
 /// assert_eq!(spans[1].kind, HighlightKind::Number);
 /// assert_eq!(&source[spans[1].span.clone()], "42");
+/// assert!(highlight_spans(" \n")?.is_empty());
+/// assert_eq!(highlight_spans("-42")?.len(), 2);
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn highlight_spans(source: &str) -> Result<Vec<HighlightSpan>, AsonError> {
@@ -164,15 +176,20 @@ pub fn highlight_spans(source: &str) -> Result<Vec<HighlightSpan>, AsonError> {
 /// * `source` - The ASON text to color. Token text, whitespace, and line endings
 ///   are copied as supplied; the function only inserts color and reset sequences.
 ///
-/// Each token gets its own color sequence followed by an SGR reset. The caller
+/// Each token is wrapped in its own color sequence and an SGR reset
+/// (`ESC[0m`); whitespace between tokens is copied uncolored. The caller
 /// decides whether the destination supports colors. Existing control characters
 /// in the input are preserved, not sanitized, so this is not a terminal-safety
 /// filter for untrusted text.
 ///
+/// Numbers are cyan; booleans yellow; characters and strings green; date/time
+/// and byte literals magenta; identifiers blue; enumeration names bold yellow;
+/// comments bright black (gray); and punctuation white.
+///
 /// # Errors
 ///
-/// Returns a lexical error from [`highlight_spans`]. Structural completeness and
-/// semantic validity are not checked.
+/// Returns the same lexical errors as [`highlight_spans`]. Structural
+/// completeness and semantic validity are not checked.
 ///
 /// # Examples
 ///
@@ -206,13 +223,16 @@ pub fn highlight_ansi(source: &str) -> Result<String, AsonError> {
 ///   whitespace between tokens, is HTML-escaped before it enters the fragment.
 ///
 /// The returned fragment supplies markup, not a stylesheet or a complete HTML
-/// page. Define styles for the classes from [`HighlightKind::css_class`] in the
-/// containing page. The source cannot introduce tags through this renderer.
+/// page. Each token is wrapped in `<span class="ason-…">`, and whitespace
+/// between tokens is copied unwrapped. Define styles for the classes from
+/// [`HighlightKind::css_class`] in the containing page. `&`, `<`, `>`, `"`,
+/// and `'` are escaped everywhere, so the source cannot introduce tags or
+/// attributes through this renderer.
 ///
 /// # Errors
 ///
-/// Returns a lexical error from [`highlight_spans`]. Like the other highlighters,
-/// this function accepts structurally incomplete but tokenizable input.
+/// Returns the same lexical errors as [`highlight_spans`]. Like the other
+/// highlighters, this function accepts structurally incomplete input.
 ///
 /// # Examples
 ///
