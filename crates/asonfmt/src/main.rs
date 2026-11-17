@@ -29,8 +29,7 @@ use clap::{CommandFactory, Parser, ValueEnum};
     version,
     author = "Hemashushu <hippospark@gmail.com>",
     about = "Source-preserving formatting, validation, and syntax highlighting for ASON documents",
-    after_help =
-r#"
+    after_help = r#"
 Examples:
   * stdin to stdout; colors are automatic when stdout is a terminal
     printf '{answer: 42}' | asonfmt
