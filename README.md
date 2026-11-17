@@ -1,6 +1,6 @@
 # ASON Formatter
 
-ASON Formatter formats, validates, and syntax-highlights [ASON](https://github.com/hemashushu/ason) documents. It is available in three forms:
+ASON Formatter formats, validates, and syntax-highlights [ASON](https://github.com/hemashushu/ason) documents. ASON is a strongly typed, JSON-like data format built as a common language for AI agents, tools, and people. The formatter is available in three forms:
 
 | Form | Package | Use it for |
 |------|---------|------------|
