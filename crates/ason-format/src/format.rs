@@ -16,14 +16,16 @@ use ason::syntax::{SyntaxKind, SyntaxToken, tokenize};
 use crate::{AsonError, validate};
 
 const MAX_LINE_WIDTH: usize = 80;
+const COMPACT_SEPARATOR: &str = ", ";
 
 /// Layout settings for [`format_with_options`].
 ///
-/// The options only control whitespace that the formatter inserts between
-/// tokens: indentation and line endings. Literal and comment contents are copied
-/// verbatim, even when they span multiple lines. [`FormatOptions::default`] uses
-/// four spaces per nesting level and LF line endings, the same layout as
-/// [`format()`]. The 80-column limit for compact containers is not configurable.
+/// The options set indentation and line endings. The indentation width also
+/// affects whether containers fit on one line. Literal and comment contents are
+/// copied verbatim, even when they span multiple lines.
+/// [`FormatOptions::default`] uses four spaces per nesting level and LF line
+/// endings, the same layout as [`format()`]. The 80-column limit for compact
+/// containers is not configurable.
 ///
 /// # Examples
 ///
@@ -124,8 +126,9 @@ impl LineEnding {
 ///   surrounding whitespace and comments.
 ///
 /// In brief, a container stays on one line when it fits within 80 columns and
-/// contains no comments or line breaks; otherwise each entry goes on its own
-/// line. Commas and blank lines are removed, and the result ends with a newline.
+/// contains no comments or multiline tokens. Entries are separated by a comma
+/// and a space on one line or by line breaks in a multiline container.
+/// Blank lines between tokens are removed, and the result ends with a newline.
 /// Literal spellings and comment bodies are kept exactly as written. Formatting
 /// an already formatted result leaves it unchanged.
 ///
@@ -140,7 +143,7 @@ impl LineEnding {
 /// ```
 /// use ason_format::format;
 ///
-/// assert_eq!(format("{answer:0x2a}")?, "{answer: 0x2a}\n");
+/// assert_eq!(format("{answer:0x2a ready:true}")?, "{answer: 0x2a, ready: true}\n");
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
 pub fn format(source: &str) -> Result<String, AsonError> {
@@ -160,18 +163,18 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 /// Each literal and comment is copied from the source rather than serialized
 /// from the parsed value. Numeric bases and type suffixes, escape sequences,
 /// raw-string delimiters, and whitespace inside multiline tokens therefore stay
-/// intact. All other whitespace, including blank lines, is replaced by the
-/// layout below, and all commas are removed.
+/// intact. Whitespace and separator commas between tokens are replaced by the
+/// layout below.
 ///
 /// # Layout
 ///
 /// * Object fields and map entries are written as `key: value`. A sign stays
 ///   attached to its number, and an enumeration name to its payload.
-/// * A nonempty container is written on one line, with entries separated by
-///   single spaces, when the container plus its indentation fits within 80
-///   columns, it contains no comments, and none of its tokens or nested
-///   containers span multiple lines. Columns are counted in characters, and a
-///   preceding `key: ` on the same line is not included.
+/// * A nonempty container is written on one line when its width is at most 80
+///   columns, it contains no comments, and all its tokens and nested containers
+///   fit on one line. A comma and a space separate entries. The width counts
+///   characters, including separators and indentation, and excludes a preceding
+///   `key: ` on the same line.
 /// * Otherwise, each entry starts on its own line, indented one level deeper
 ///   than the container, and the closing delimiter gets its own line.
 /// * A comment that follows a line break in the source, an opening delimiter,
@@ -196,10 +199,10 @@ pub fn format(source: &str) -> Result<String, AsonError> {
 ///     ..FormatOptions::default()
 /// };
 /// // Short containers stay on one line; a comment forces one entry per line.
-/// assert_eq!(format_with_options("[1,2]", &options)?, "[1 2]\n");
+/// assert_eq!(format_with_options("[1 2]", &options)?, "[1, 2]\n");
 /// assert_eq!(
 ///     format_with_options("{a:1 // one\n\n b:[2,3]}", &options)?,
-///     "{\n  a: 1 // one\n  b: [2 3]\n}\n"
+///     "{\n  a: 1 // one\n  b: [2, 3]\n}\n"
 /// );
 /// # Ok::<(), ason_format::AsonError>(())
 /// ```
@@ -309,12 +312,14 @@ fn is_open(kind: SyntaxKind) -> bool {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-/// Whitespace to insert immediately before a token, outside its source text.
+/// Text to insert immediately before a token, outside its source text.
 enum Gap {
     /// Keep adjacent tokens touching, as in a sign followed by its number.
     None,
     /// Separate tokens with one space on the same line.
     Space,
+    /// Separate entries in a compact container with a comma and a space.
+    CommaSpace,
     /// Start a new line and indent to the token's planned nesting depth.
     Line,
 }
@@ -339,7 +344,7 @@ struct Layout<'a> {
     indent_width: usize,
     /// Index of the next token that has not yet received a placement.
     cursor: usize,
-    /// Leading whitespace and nesting depth for each consumed token, in order.
+    /// Leading gap and nesting depth for each consumed token, in order.
     placements: Vec<(Gap, usize)>,
 }
 
@@ -418,8 +423,9 @@ impl Layout<'_> {
         let empty = entries.is_empty();
         self.consume(depth, if empty { Gap::None } else { Gap::Line });
         if !empty && self.fits_single_line(opening_index, closing_index, &entries, depth) {
-            for (index, entry) in entries.iter().enumerate() {
-                self.placements[*entry].0 = if index == 0 { Gap::None } else { Gap::Space };
+            self.placements[entries[0]].0 = Gap::None;
+            for &entry in &entries[1..] {
+                self.placements[entry].0 = Gap::CommaSpace;
             }
             self.placements[closing_index].0 = Gap::None;
         }
@@ -467,13 +473,18 @@ impl Layout<'_> {
                 continue;
             }
             let gap_width = if entries.get(entry_cursor) == Some(&index) {
-                let gap_width = usize::from(entry_cursor > 0);
+                let gap_width = if entry_cursor == 0 {
+                    0
+                } else {
+                    COMPACT_SEPARATOR.len()
+                };
                 entry_cursor += 1;
                 gap_width
             } else {
                 match self.placements[index].0 {
                     Gap::None => 0,
                     Gap::Space => 1,
+                    Gap::CommaSpace => COMPACT_SEPARATOR.len(),
                     Gap::Line => return false,
                 }
             };
@@ -486,7 +497,7 @@ impl Layout<'_> {
     }
 }
 
-/// Builds output from unchanged token text and planned leading whitespace.
+/// Builds output from unchanged token text and planned leading gaps.
 struct Writer {
     /// The accumulated formatted document, before the final newline is appended.
     output: String,
@@ -499,14 +510,14 @@ struct Writer {
 impl Writer {
     /// Appends `text` verbatim after `gap`, indenting new lines to `depth`.
     ///
-    /// Only whitespace outside the token is changed. Newlines inside `text` are
-    /// deliberately not reindented, since doing so could change a literal value
-    /// or alter a comment. Leading gaps are suppressed for the first output token.
+    /// Newlines inside `text` are deliberately kept verbatim to preserve
+    /// literal values and comments. The first output token has no leading gap.
     fn write(&mut self, text: &str, gap: Gap, depth: usize) -> Result<(), AsonError> {
         if !self.output.is_empty() {
             match gap {
                 Gap::Line => self.output.push_str(self.line_ending.as_str()),
                 Gap::Space => self.output.push(' '),
+                Gap::CommaSpace => self.output.push_str(COMPACT_SEPARATOR),
                 Gap::None => {}
             }
         }
@@ -584,27 +595,27 @@ mod tests {
     fn object_layout() {
         assert_eq!(
             check("{name: r\"Alice\", nums: [0xff, 0b10], pair: (true, '中')}"),
-            "{name: r\"Alice\" nums: [0xff 0b10] pair: (true '中')}\n"
+            "{name: r\"Alice\", nums: [0xff, 0b10], pair: (true, '中')}\n"
         );
-        assert_eq!(check("[1 2 3]"), "[1 2 3]\n");
-        assert_eq!(check("[1: true 2: false]"), "[1: true 2: false]\n");
+        assert_eq!(check("[1 2 3,]"), "[1, 2, 3]\n");
+        assert_eq!(check("[1: true 2: false]"), "[1: true, 2: false]\n");
         assert_eq!(check("Option::Some(1)"), "Option::Some(1)\n");
         for source in [
-            "Some(Ok([11 13 17]))",
+            "Some(Ok([11, 13, 17]))",
             "Result::Ok(Some(11))",
             "Err(\"failed\")",
             "None",
             "Option::Some(None)",
-            "Some({id: 123 name: \"Alice\"})",
+            "Some({id: 123, name: \"Alice\"})",
             // Variant shorthand names are ordinary identifiers outside value position.
-            "{Some: Some(1) None: None Ok: Ok(2) Err: Err(3)}",
+            "{Some: Some(1), None: None, Ok: Ok(2), Err: Err(3)}",
             "[None: Some::A]",
         ] {
             assert_eq!(check(source), format!("{source}\n"));
         }
         assert_eq!(
             check("Shape::Rect{width: 200 height: 100}"),
-            "Shape::Rect{width: 200 height: 100}\n"
+            "Shape::Rect{width: 200, height: 100}\n"
         );
         assert_eq!(check("[]"), "[]\n");
         assert_eq!(check("{}"), "{}\n");
@@ -688,7 +699,7 @@ mod tests {
                 }
             )
             .unwrap(),
-            "[1 2]\n"
+            "[1, 2]\n"
         );
         let item = "a".repeat(39);
         let source = format!("[\"{item}\" \"{item}\"]");
@@ -776,17 +787,20 @@ mod tests {
     }
 
     #[test]
-    /// Keeps a container inline at 80 characters but wraps it at 81.
+    /// Counts both direct and nested separators at the compact width boundary.
     fn compact_width_boundary() {
-        let item = "x".repeat(76);
-        let source = format!("[\"{item}\"]");
+        let item = "x".repeat(68);
+        let source = format!("([1, 2], \"{item}\")");
         assert_eq!(source.chars().count(), MAX_LINE_WIDTH);
-        assert_eq!(format(&source).unwrap(), format!("{source}\n"));
+        assert_eq!(check(&source), format!("{source}\n"));
 
-        let item = "x".repeat(77);
-        let source = format!("[\"{item}\"]");
+        let item = "x".repeat(69);
+        let source = format!("([1, 2], \"{item}\")");
         assert_eq!(source.chars().count(), MAX_LINE_WIDTH + 1);
-        assert_eq!(format(&source).unwrap(), format!("[\n    \"{item}\"\n]\n"));
+        assert_eq!(
+            check(&source),
+            format!("(\n    [1, 2]\n    \"{item}\"\n)\n")
+        );
     }
 
     #[test]

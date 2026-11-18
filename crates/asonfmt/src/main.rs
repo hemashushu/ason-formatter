@@ -32,7 +32,8 @@ use clap::{CommandFactory, Parser, ValueEnum};
     after_help = r#"
 Examples:
   * stdin to stdout; colors are automatic when stdout is a terminal
-    printf '{answer: 42}' | asonfmt
+    printf '{answer:42 ready:true}' | asonfmt
+    # Prints {answer: 42, ready: true}
 
   * File to stdout; colors are automatic when stdout is a terminal
     asonfmt input.ason

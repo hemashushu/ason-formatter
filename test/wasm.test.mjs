@@ -76,9 +76,9 @@ test("WASM validates without formatting and never partially formats invalid inpu
         status: "success",
         text: null,
     });
-    assert.deepEqual(format("{answer:42}"), {
+    assert.deepEqual(format("{answer:42 values:[1 2]}"), {
         status: "success",
-        text: "{answer: 42}\n",
+        text: "{answer: 42, values: [1, 2]}\n",
     });
     for (const source of [
         "",

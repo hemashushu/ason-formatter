@@ -32,6 +32,9 @@ DESCRIPTION
     is treated as a file. `-o/--output FILE` is also optional and defaults to
     stdout when omitted; an output path named `-` is treated as a file.
 
+    Single-line containers use a comma and a space between entries. Multiline
+    containers separate entries with line breaks.
+
     The `-v/--validate` option checks the input without formatting it. Nothing
     is written on success. An invalid document is reported on stderr with its
     location when known, such as a value whose type does not match the earlier
@@ -63,7 +66,8 @@ DESCRIPTION
 
 EXAMPLES
     * stdin to stdout; colors are automatic when stdout is a terminal
-      printf '{answer: 42}' | asonfmt
+      printf '{answer:42 ready:true}' | asonfmt
+      # Prints {answer: 42, ready: true}
 
     * File to stdout; colors are automatic when stdout is a terminal
       asonfmt input.ason

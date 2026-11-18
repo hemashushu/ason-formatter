@@ -106,18 +106,19 @@ is formatted as:
 ```text
 {
     name: "Alice"
-    tags: ["admin" "dev"]
+    tags: ["admin", "dev"]
     // Optional contact
-    contact: Option::Some({email: "alice@example.com" phone: None})
-    scores: [0x10 +2_i32 0b11]
+    contact: Option::Some({email: "alice@example.com", phone: None})
+    scores: [0x10, +2_i32, 0b11]
 }
 ```
 
 The formatter checks that the input contains exactly one root value, then lays it out consistently:
 
-- A nonempty container (an object, list, map, tuple, or enumeration payload) stays on one line when it fits within 80 columns and contains no comments or multiline literals. Otherwise, each entry goes on its own line, one level deeper, and the closing delimiter goes on its own line. In the example, the root object does not fit on one line, while the nested values do.
+- A nonempty container (an object, list, map, tuple, or enumeration payload) stays on one line when it fits within 80 columns and contains no comments or multiline literals. Single-line containers use a comma and a space between entries. Both characters count toward the 80-column limit.
+- In multiline containers, each entry starts on its own line, one level deeper. Line breaks separate the entries, and the closing delimiter goes on its own line.
 - Empty lists and objects are written as `[]` and `{}` unless they contain comments.
-- A space follows each colon, commas are removed (entries are separated by spaces or line breaks), blank lines are removed, and the output ends with a newline.
+- A space follows each colon, blank lines between tokens are removed, and the output ends with a newline.
 - By default, indentation is four spaces and generated line breaks use LF. You can choose tabs or CRLF instead. With tabs, one tab is emitted per level regardless of the indentation width.
 
 Formatting preserves the exact text of literals and comments, including escapes, numeric bases and type suffixes (`0x10`, `+2_i32`), raw-string delimiters, and line endings inside literals and comments. Multiline literals and comments keep their original internal indentation. Comments stay in their original order. A comment that starts on its own line in the input stays on its own line; a comment after a value on the same line stays there. Code after a line comment always moves to the next line. Formatting an already formatted document leaves it unchanged.
@@ -157,10 +158,10 @@ Format a document with the defaults (four spaces, LF), or set options explicitly
 use ason_format::{format, format_with_options, AsonError, FormatOptions, IndentStyle, LineEnding};
 
 fn main() -> Result<(), AsonError> {
-    let source = r#"{name: "Alice", values: [0xff, 0b10]}"#;
+    let source = r#"{name: "Alice" values: [0xff 0b10]}"#;
 
     let formatted = format(source)?;
-    assert_eq!(formatted, "{name: \"Alice\" values: [0xff 0b10]}\n");
+    assert_eq!(formatted, "{name: \"Alice\", values: [0xff, 0b10]}\n");
 
     let options = FormatOptions {
         indent_width: 2,
@@ -287,8 +288,8 @@ import init, { formatDocument, validateDocument } from '@hemashushu/ason-format-
 const wasm = await readFile(new URL(import.meta.resolve('@hemashushu/ason-format-wasm/ason_bg.wasm')));
 await init({ module_or_path: wasm });
 
-const formatted = JSON.parse(formatDocument('{answer:42}', 4, true, false));
-// { status: 'success', text: '{answer: 42}\n' }
+const formatted = JSON.parse(formatDocument('{answer:42 ready:true}', 4, true, false));
+// { status: 'success', text: '{answer: 42, ready: true}\n' }
 
 const validation = JSON.parse(validateDocument('[1 true]'));
 // {

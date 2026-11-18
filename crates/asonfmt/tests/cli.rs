@@ -109,7 +109,7 @@ fn stdin_stdout_and_color() {
     assert_eq!(output.stdout, b"{a: 1}\n");
     assert!(output.stderr.is_empty());
     let output = stdin(&["--indent-width", "2"], b"[1 2]");
-    assert_eq!(output.stdout, b"[1 2]\n");
+    assert_eq!(output.stdout, b"[1, 2]\n");
     let output = stdin(
         &[
             "--indent-style",
@@ -157,7 +157,7 @@ fn dash_is_a_file_path() {
         .unwrap();
     assert!(result.status.success(), "{:?}", result.stderr);
     assert!(result.stdout.is_empty());
-    assert_eq!(fs::read(&dash).unwrap(), b"[1 2]\n");
+    assert_eq!(fs::read(&dash).unwrap(), b"[1, 2]\n");
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn files_and_output_protection() {
         .unwrap();
     assert!(result.status.success(), "{:?}", result.stderr);
     assert!(result.stdout.is_empty());
-    assert_eq!(fs::read_to_string(&output).unwrap(), "[0xff 0b10]\n");
+    assert_eq!(fs::read_to_string(&output).unwrap(), "[0xff, 0b10]\n");
     let result = command().arg(&input).output().unwrap();
     assert!(result.status.success());
     assert_eq!(result.stdout, fs::read(&output).unwrap());
@@ -214,7 +214,7 @@ fn in_place_replacement_modes() {
         .unwrap();
     assert!(result.status.success(), "{:?}", result.stderr);
     assert!(result.stdout.is_empty());
-    assert_eq!(fs::read(&input).unwrap(), b"[1 2]\n");
+    assert_eq!(fs::read(&input).unwrap(), b"[1, 2]\n");
 
     let result = command()
         .args(["--replace"])
